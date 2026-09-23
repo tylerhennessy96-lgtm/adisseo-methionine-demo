@@ -94,7 +94,6 @@ function populateFilters() {
     filters: [
       { id: 'state',     label: 'Regions',          items: [...new Set(COMMUNITIES.map(c => c.regionName))] },
       { id: 'community', label: 'Countries',        items: COMMUNITIES.map(c => c.name) },
-      { id: 'rm',        label: 'Pricing Managers', items: [...new Set(COMMUNITIES.map(c => c.pm))] },
     ],
     storageKey: 'adisseo_params_filters',
     onChange: renderParamPanel,
@@ -161,11 +160,10 @@ function toggleParamGroup(group) {
 
 // ── Filter helper ────────────────────────────────────────
 function getFilteredCommunities() {
-  const sf=getMsValues('state'),cf=getMsValues('community'),rf=getMsValues('rm');
+  const sf=getMsValues('state'),cf=getMsValues('community');
   return PARAMETERS_DATA.filter(c=>{
     if(sf.length&&!sf.includes(c.regionName))return false;
     if(cf.length&&!cf.includes(c.name))return false;
-    if(rf.length&&!rf.includes(c.pm))return false;
     return true;
   });
 }

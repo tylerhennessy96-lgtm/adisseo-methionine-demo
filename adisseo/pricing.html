@@ -34,6 +34,14 @@
     .lock-date-trigger.is-placeholder { color: var(--text-muted); }
     .lock-date-trigger svg { color: var(--text-muted); flex-shrink: 0; }
 
+    /* ── Hierarchy indentation (name cell is the 2nd cell; the 1st is the checkbox) ──
+       Region › Country › Product: each level steps in, with a faint guide
+       line so the sub-levels read as children. */
+    table.data-table tr.row-property td:nth-child(2) { padding-left: 12px; font-weight: 600; }
+    table.data-table tr.row-bedtype  td:nth-child(2) { padding-left: 38px; font-weight: 500; box-shadow: inset 22px 0 0 -21px var(--border); }
+    table.data-table tr.row-unit     td:nth-child(2) { padding-left: 66px; box-shadow: inset 50px 0 0 -49px var(--border); }
+    table.data-table tr.row-unit     td:nth-child(2)::before { content: '\2514'; color: var(--text-muted); opacity: .55; margin-right: 6px; font-size: 11px; }
+
     /* ── Action cell + accept/reject buttons ── */
     td.action-cell { white-space: nowrap; }
     .action-cell-inner { display: inline-flex; align-items: center; gap: 6px; }
@@ -963,7 +971,6 @@ function populateFilters() {
       { id: 'region',  label: 'Regions',          items: REGIONS.map(r => r.name) },
       { id: 'country', label: 'Countries',        items: COUNTRIES.map(c => c.name) },
       { id: 'product', label: 'Products',         items: PRODUCT_NAMES },
-      { id: 'pm',      label: 'Pricing Managers', items: PRICING_MANAGERS },
     ],
     storageKey: 'adisseo_filters',
     onChange: renderTable,
@@ -1101,7 +1108,6 @@ function renderTable() {
   const regionF = getMsValues('region');
   const countryF = getMsValues('country');
   const productF = getMsValues('product');
-  const pmF = getMsValues('pm');
   const idQuery = document.getElementById('unitIdSearch')?.value.trim().toLowerCase() ?? '';
   const alertF = document.getElementById('alertFilter')?.value;
   const recF = document.getElementById('recFilter')?.value;
@@ -1122,7 +1128,6 @@ function renderTable() {
   };
   const countryPasses = (c) => {
     if (countryF.length && !countryF.includes(c.name)) return false;
-    if (pmF.length && !pmF.includes(c.pm)) return false;
     return true;
   };
 
@@ -1193,7 +1198,7 @@ function renderTable() {
           <button onclick="openCommAttrModal('${country.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);display:inline-flex;align-items:center;padding:0 4px;vertical-align:middle;" title="Market profile">
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><line x1="7" y1="6" x2="7" y2="10"/><circle cx="7" cy="4.5" r=".6" fill="currentColor"/></svg>
           </button>
-          <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${country.volume.toLocaleString('en-GB')} t/mo \u00b7 ${country.pm}</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${country.volume.toLocaleString('en-GB')} t/mo</span>
         </td>
         <td><span class="avail-pct" style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();toggleExposureForProp('${country.id}','${esc(country.name)}','${region.id}','${country.id}')">${country.capUtil}%${country.capUtil > alertCfg.capUtil.threshold ? ' <span class="warn-icon">\u26a0</span>' : ''}</span></td>
         <td>${alertsCellHtml(cAlerts)}</td>
@@ -1286,7 +1291,6 @@ function openCommAttrModal(countryId) {
     { label: 'Region', value: c.regionName },
     { label: 'Currency', value: c.cur + '/t' },
     { label: 'Planned volume', value: c.volume.toLocaleString('en-GB') + ' t/mo' },
-    { label: 'Pricing Manager', value: c.pm },
     { label: 'Capacity utilization', value: c.capUtil + '%' },
     { label: 'Market signal', value: signalLevelForScore(c.signal).label },
   ];
@@ -1970,7 +1974,7 @@ function openRowCopilot(pmId, countryId) {
   } else {
     document.getElementById('rowCopilotHead').innerHTML = `
       <div class="cprp-dest">${country.name}</div>
-      <div class="cprp-wk">${country.regionName} \u00b7 ${country.products.length} products \u00b7 ${country.pm}</div>
+      <div class="cprp-wk">${country.regionName} \u00b7 ${country.products.length} products</div>
       <div class="cprp-metrics">Cap. util ${country.capUtil}% <span class="cprp-sep">\u00b7</span> Demand ${fmtPct(country.momentum)} <span class="cprp-sep">\u00b7</span> Signal: ${signalLevelForScore(country.signal).label}</div>
       <div class="cprp-label-bar"><span class="cprp-label">\u2726 Pricing Copilot</span></div>`;
   }

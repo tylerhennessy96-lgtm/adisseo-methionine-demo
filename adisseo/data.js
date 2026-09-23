@@ -60,8 +60,6 @@ const _COUNTRIES_RAW = [
   { id: 'MX', name: 'Mexico',   region: 'AM', pm: 'Rafael Costa',    basePow: 2380, baseCost: 1645, strengthBias: -0.40, volume: 1200 },
 ];
 
-const PRICING_MANAGERS = [...new Set(_COUNTRIES_RAW.map(c => c.pm))];
-
 // ── Market signal levels (drives the price guidance) ─────────
 // The score (0-100) is derived from the strength signal below; the
 // level is what the cockpit shows and explains.
