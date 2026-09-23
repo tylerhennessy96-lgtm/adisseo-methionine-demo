@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — Dynamica Methionine Pricing Cockpit</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+    }
+    body.login-body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at 20% 25%, rgba(232,0,125,0.10) 0%, transparent 45%),
+        radial-gradient(circle at 80% 75%, rgba(99,102,241,0.08) 0%, transparent 45%),
+        linear-gradient(135deg, #141427 0%, #1a1a2e 60%, #21223a 100%);
+      padding: 32px 16px;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.20);
+      padding: 36px 36px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 4px;
+    }
+    .login-brand img { height: 32px; width: auto; display: block; }
+    .login-brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+      gap: 2px;
+    }
+    .login-brand-text .primary {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      color: #1a1a2e;
+      text-transform: uppercase;
+    }
+    .login-brand-text .secondary {
+      font-size: 12px;
+      font-weight: 400;
+      color: #7a7a88;
+    }
+    .login-heading {
+      font-size: 20px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin: 8px 0 0;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: #6b7280;
+      margin: 0;
+    }
+    .sso-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      background: #e8007d;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: background .12s, transform .05s;
+      margin-top: 4px;
+    }
+    .sso-btn:hover   { background: #d10072; }
+    .sso-btn:active  { transform: translateY(1px); }
+    .sso-btn[disabled] {
+      background: #d4d4dd;
+      cursor: not-allowed;
+    }
+    .sso-btn .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+    .sso-btn.is-loading .spinner       { display: inline-block; }
+    .sso-btn.is-loading .sso-lock-icon { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .alt-link {
+      display: inline-block;
+      text-align: center;
+      font-size: 12.5px;
+      color: #6b7280;
+      text-decoration: none;
+      padding: 4px 0;
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: 100%;
+      font-family: 'Inter', sans-serif;
+    }
+    .alt-link:hover { color: #e8007d; }
+    .login-footer {
+      margin-top: 12px;
+      padding-top: 16px;
+      border-top: 1px solid #eef0f4;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: center;
+    }
+    .login-footer .dot { padding: 0 6px; color: #d0d4db; }
+  </style>
+</head>
+<body class="login-body">
+
+  <div class="login-card">
+    <div class="login-brand">
+      <img src="engine_logo (2).png" alt="Dynamica Methionine Pricing Cockpit">
+      <div class="login-brand-text">
+        <span class="primary">DYNAMICA</span>
+        <span class="secondary">Methionine Pricing Cockpit</span>
+      </div>
+    </div>
+
+    <h1 class="login-heading">Sign in to your account</h1>
+    <p class="login-sub">Single sign-on powered by Adisseo Identity</p>
+
+    <button type="button" id="ssoBtn" class="sso-btn" onclick="fakeLogin(this)">
+      <svg class="sso-lock-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <rect x="2.5" y="6.5" width="9" height="6" rx="1.2"/>
+        <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/>
+      </svg>
+      <span class="spinner"></span>
+      <span id="ssoBtnLabel">Continue with Adisseo SSO</span>
+    </button>
+
+    <button type="button" class="alt-link" onclick="fakeLogin(document.getElementById('ssoBtn'))">
+      Use a different account
+    </button>
+
+    <div class="login-footer">
+      © 2026 Dynamica<span class="dot">·</span>Powered by Adisseo Identity
+    </div>
+  </div>
+
+  <script>
+    // Pure cosmetic — no real authentication. Any click shows the loading
+    // state for 800ms and then routes to the app entrypoint.
+    function fakeLogin(btn) {
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      document.getElementById('ssoBtnLabel').textContent = 'Authenticating…';
+      setTimeout(() => { window.location.href = 'pricing.html'; }, 800);
+    }
+  </script>
+</body>
+</html>

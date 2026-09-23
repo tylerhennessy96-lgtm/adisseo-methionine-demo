@@ -1,0 +1,2067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Price Cockpit — Dynamica Methionine</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="data.js"></script>
+  <script src="filters.js"></script>
+  <script src="date-picker.js"></script>
+  <style>
+    /* Price lock — Notes column icon + guidance freeze indicator */
+    .lock-btn {
+      background: none; border: none; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 2px; border-radius: 3px; color: var(--text-muted); transition: color .12s;
+    }
+    .lock-btn:hover { color: var(--accent); }
+    .lock-btn.locked { color: var(--accent); }
+    .lock-btn svg { width: 13px; height: 13px; }
+    .rate-locked {
+      background: rgba(148,163,184,0.10); border-radius: 3px; padding: 2px 6px;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .rate-locked svg { color: var(--accent); flex-shrink: 0; }
+    .lock-date-trigger {
+      display: inline-flex; align-items: center; gap: 8px; max-width: 260px;
+      border: 1px solid var(--border-mid); border-radius: var(--radius);
+      padding: 7px 12px; font-family: 'Inter', sans-serif; font-size: 13px;
+      color: var(--text-primary); background: var(--surface); cursor: pointer; transition: border-color .12s;
+    }
+    .lock-date-trigger:hover { border-color: var(--accent); }
+    .lock-date-trigger.is-placeholder { color: var(--text-muted); }
+    .lock-date-trigger svg { color: var(--text-muted); flex-shrink: 0; }
+
+    /* ── Action cell + accept/reject buttons ── */
+    td.action-cell { white-space: nowrap; }
+    .action-cell-inner { display: inline-flex; align-items: center; gap: 6px; }
+    .action-btn {
+      width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 50%; border: 1.5px solid; background: var(--surface); cursor: pointer; padding: 0;
+      transition: background .12s, border-color .12s, color .12s; flex-shrink: 0;
+    }
+    .action-btn svg { display: block; }
+    .act-accept { color: #16a34a; border-color: #bbf7d0; }
+    .act-accept:hover { background: #dcfce7; border-color: #16a34a; }
+    .act-accept.solid { background: #16a34a; color: #fff; border-color: #16a34a; }
+    .act-reject { color: #dc2626; border-color: #fecaca; }
+    .act-reject:hover { background: #fee2e2; border-color: #dc2626; }
+    .act-reject.solid { background: #dc2626; color: #fff; border-color: #dc2626; }
+    tr.row-unit.row-accepted td { background: #f1faf3; }
+    tr.row-unit.row-accepted:hover td { background: #e7f4ec; }
+    tr.row-unit.row-rejected td { background: #fdf3f3; }
+    tr.row-unit.row-rejected:hover td { background: #f7e6e6; }
+    tr.row-unit.row-overridden td { background: #f3f4ff; }
+    tr.row-unit.row-overridden:hover td { background: #e8eafc; }
+
+    .commit-btn {
+      font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: var(--radius); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+      background: var(--accent); color: #fff; border: 1px solid var(--accent); transition: background .12s, opacity .12s;
+    }
+    .commit-btn:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+    .commit-btn:disabled { opacity: 0.45; cursor: default; background: var(--accent); }
+    .commit-btn.is-loading { pointer-events: none; }
+    .commit-spinner {
+      width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;
+      border-radius: 50%; animation: cmtSpin .7s linear infinite; display: none;
+    }
+    .commit-btn.is-loading .commit-spinner { display: inline-block; }
+    @keyframes cmtSpin { to { transform: rotate(360deg); } }
+
+    /* ── Row-select checkboxes ── */
+    table.data-table th.col-select,
+    table.data-table tbody tr td.col-select {
+      width: 34px !important; min-width: 34px !important;
+      padding: 4px 8px 4px 12px !important; text-align: center;
+    }
+    input.row-select { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+
+    .accept-all-btn {
+      font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: var(--radius); cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+      background: transparent; color: var(--accent); border: 1px solid var(--accent); transition: background .12s, opacity .12s;
+    }
+    .accept-all-btn:hover { background: rgba(232,0,125,0.08); }
+    .accept-all-btn:disabled { opacity: 0.45; cursor: default; background: transparent; }
+
+    /* ── Bulk price update modal ── */
+    .bulk-backdrop {
+      position: fixed; inset: 0; background: rgba(26,26,46,0.55); z-index: 1200;
+      display: none; align-items: center; justify-content: center; padding: 24px;
+    }
+    .bulk-backdrop.is-open { display: flex; }
+    .bulk-modal {
+      background: var(--surface); border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,.28);
+      width: 460px; max-width: calc(100vw - 48px); font-family: 'Inter', sans-serif;
+    }
+    .bulk-modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px 22px 12px; border-bottom: 1px solid var(--border); }
+    .bulk-modal-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .bulk-modal-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .bulk-modal-close { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; border-radius: 6px; display: inline-flex; }
+    .bulk-modal-close:hover { background: #f3f4f8; color: var(--text-primary); }
+    .bulk-modal-body { padding: 16px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .bulk-type-row { display: flex; gap: 10px; }
+    .bulk-type-opt {
+      flex: 1; display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--border-mid); border-radius: var(--radius); padding: 9px 12px;
+      font-size: 12.5px; font-weight: 500; color: var(--text-primary); cursor: pointer; transition: border-color .12s, background .12s;
+    }
+    .bulk-type-opt:hover { border-color: var(--accent); }
+    .bulk-type-opt:has(input:checked) { border-color: var(--accent); background: rgba(232,0,125,0.05); }
+    .bulk-type-opt input { accent-color: var(--accent); }
+    .bulk-value-row { display: flex; align-items: center; gap: 10px; }
+    .bulk-value-row label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+    .bulk-value-row input {
+      flex: 1; height: 34px; padding: 0 12px; border: 1px solid var(--border-mid); border-radius: var(--radius);
+      font-family: 'Inter', sans-serif; font-size: 13.5px; font-weight: 500; color: var(--text-primary); font-variant-numeric: tabular-nums;
+    }
+    .bulk-value-row input:focus { outline: 1.5px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+    .bulk-unit { font-size: 13px; font-weight: 600; color: var(--text-secondary); width: 22px; }
+    .bulk-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+    .bulk-hint b { color: var(--text-secondary); }
+    .bulk-preview { display: flex; flex-direction: column; gap: 4px; }
+    .bulk-preview-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
+    .bulk-preview-row { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .bulk-preview-row b { color: var(--text-primary); }
+    .bulk-preview-more { font-size: 11px; color: var(--text-muted); font-style: italic; }
+    .bulk-modal-footer { padding: 14px 22px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+    .bulk-btn-ghost, .bulk-btn-primary {
+      font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 600; padding: 8px 16px;
+      border-radius: var(--radius); cursor: pointer; transition: background .12s, opacity .12s;
+    }
+    .bulk-btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-mid); }
+    .bulk-btn-ghost:hover { background: #f3f4f8; color: var(--text-primary); }
+    .bulk-btn-primary { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+    .bulk-btn-primary:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-dim); }
+    .bulk-btn-primary:disabled { opacity: 0.45; cursor: default; }
+
+    /* ── Sortable headers ── */
+    .data-table thead th.sortable { cursor: pointer; user-select: none; transition: background .12s, color .12s; }
+    .data-table thead th.sortable:hover { background: #eef0f5; color: var(--text-primary); }
+    .data-table thead th.sort-asc, .data-table thead th.sort-desc { background: #e8eaf1; color: var(--text-primary); }
+    .th-inner { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+    .sort-ind {
+      display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 7px; line-height: 1; color: var(--text-muted); opacity: 0.45; flex-shrink: 0; width: 8px;
+    }
+    .sort-ind .sa-up, .sort-ind .sa-down { display: block; }
+    .sort-ind .sa-down { margin-top: 1px; }
+    th.sort-asc .sort-ind, th.sort-desc .sort-ind { opacity: 1; color: var(--accent); font-size: 10px; }
+    th.sort-asc .sort-ind .sa-down, th.sort-desc .sort-ind .sa-up { display: none; }
+
+    /* ── Recommendation chip ── */
+    .rec-action-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; border-radius: 10px; padding: 2px 8px; white-space: nowrap; }
+    .rec-action-chip.ra-up   { background: #dcfce7; color: #166534; }
+    .rec-action-chip.ra-down { background: #fee2e2; color: #991b1b; }
+    .rec-action-chip.ra-flat { background: #f1f5f9; color: #64748b; }
+    .rec-state-tag { display: inline-flex; align-items: center; font-size: 9px; font-weight: 700; border-radius: 3px; padding: 1px 4px; margin-left: 4px; letter-spacing: .03em; }
+    .rec-state-tag.t-accepted   { background: #dcfce7; color: #166534; }
+    .rec-state-tag.t-rejected   { background: #fee2e2; color: #991b1b; }
+    .rec-state-tag.t-overridden { background: #fef3c7; color: #92400e; }
+
+    /* ── Market signal badge ── */
+    .dl-badge { display: inline-flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; border-radius: 3px; padding: 1px 5px; letter-spacing: .02em; cursor: help; white-space: nowrap; }
+    .dl-5 { background: rgba(22,163,74,0.18);  color: #14532d; }
+    .dl-4 { background: rgba(22,163,74,0.10);  color: #166534; }
+    .dl-3 { background: #f1f5f9;               color: #64748b; }
+    .dl-2 { background: rgba(37,99,235,0.10);  color: #1d4ed8; }
+    .dl-1 { background: rgba(37,99,235,0.18);  color: #1e3a8a; }
+    .pace-pos { color: #15803d; font-weight: 600; }
+    .pace-neg { color: #e05252; font-weight: 600; }
+    .pace-flat { color: var(--text-secondary); }
+
+    /* Guidance cell */
+    .guidance-cell { text-align: right; white-space: nowrap; }
+    .guidance-corridor { display: block; font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+    .bench-cell { text-align: right; color: var(--text-secondary); white-space: nowrap; }
+    .bench-move { font-size: 10px; margin-left: 3px; }
+
+    /* ── Market price forecast modal ── */
+    .bc-backdrop { position: fixed; inset: 0; background: rgba(15,17,22,0.55); z-index: 300; display: none; align-items: center; justify-content: center; padding: 24px; }
+    .bc-backdrop.is-open { display: flex; }
+    .bc-modal { background: var(--surface); border-radius: 12px; width: min(96vw, 1040px); max-height: 92vh; overflow-y: auto; box-shadow: 0 24px 64px rgba(0,0,0,.28); font-family: 'Inter', sans-serif; }
+    .bc-header { display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 5; }
+    .bc-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+    .bc-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .bc-close { margin-left: auto; background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; border-radius: 6px; display: inline-flex; }
+    .bc-close:hover { color: var(--text-primary); background: #f3f4f8; }
+    .bc-body { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; padding: 16px 22px 22px; }
+    @media (max-width: 900px) { .bc-body { grid-template-columns: 1fr; } }
+    .bc-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .bc-panel { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface); }
+    .bc-panel-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .bc-legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; flex-wrap: wrap; }
+    .bc-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+    .bc-legend .line { display: inline-block; width: 14px; height: 0; border-top: 2px solid; margin-right: 5px; vertical-align: 3px; }
+    .bc-legend-tick { display: inline-block; width: 12px; height: 0; border-top: 2px solid #2563eb; margin-right: 5px; vertical-align: 3px; }
+    .bc-chart-area { position: relative; width: 100%; }
+    .bc-chart-area svg { width: 100%; height: auto; display: block; }
+    .chart-tooltip { position: absolute; display: none; pointer-events: none; z-index: 10; background: #1a1d23; border: 1px solid #2a2d35; border-radius: 7px; padding: 8px 10px; font-size: 11px; color: #d1d5db; min-width: 150px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    .chart-tooltip-header { font-weight: 600; color: #e5e7eb; margin-bottom: 4px; font-size: 11px; }
+    .chart-tooltip-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+    .chart-tooltip-row .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+    .chart-tooltip-row .label { color: #9ca3af; }
+    .chart-tooltip-row .value { margin-left: auto; font-weight: 600; color: #e5e7eb; }
+    .bc-compare { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .bc-compare th, .bc-compare td { padding: 6px 8px; text-align: right; }
+    .bc-compare th { font-size: 10.5px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
+    .bc-compare td:first-child, .bc-compare th:first-child { text-align: left; color: var(--text-secondary); }
+    .bc-compare td { border-bottom: 1px solid var(--border); color: var(--text-primary); font-weight: 500; }
+    .bc-compare tr:last-child td { border-bottom: none; }
+    .bc-rec-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+    .bc-rec-row .label { color: var(--text-secondary); }
+    .bc-rec-row .value { font-weight: 700; color: var(--text-primary); }
+    .bc-rec-row .value.pct.cell-pos { color: #15803d; }
+    .bc-rec-row .value.pct.cell-neg { color: #e05252; }
+    .bc-corridor-bar { position: relative; height: 8px; border-radius: 4px; background: #e8eaf1; margin: 8px 0 4px; }
+    .bc-corridor-bar .band { position: absolute; top: 0; bottom: 0; background: rgba(232,0,125,0.28); border-radius: 4px; }
+    .bc-corridor-bar .mark { position: absolute; top: -3px; width: 2px; height: 14px; border-radius: 1px; }
+    .bc-corridor-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); }
+    .bc-drivers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .bc-drivers li { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+    .bc-drivers .dir { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; margin-top: 1px; }
+    .bc-drivers .dir.up   { background: #dcfce7; color: #166534; }
+    .bc-drivers .dir.down { background: #fee2e2; color: #991b1b; }
+    .bc-drivers .dir.flat { background: #f1f5f9; color: #64748b; }
+    .bc-alert-list { display: flex; flex-direction: column; gap: 6px; }
+    .bc-alert-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+    .bc-dl-big { display: flex; align-items: center; gap: 12px; }
+    .bc-dl-code { font-size: 20px; font-weight: 800; white-space: nowrap; }
+    .bc-dl-text { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Top Nav ── -->
+  <nav class="topnav">
+    <a href="pricing.html" style="display:flex;align-items:center;gap:8px;margin-right:32px;text-decoration:none;flex-shrink:0;">
+      <img src="engine_logo (2).png" style="height:28px;width:auto;display:block;" alt="Dynamica">
+      <div style="display:flex;flex-direction:column;line-height:1;gap:2px;">
+        <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;color:#ffffff;text-transform:uppercase;">DYNAMICA</span>
+        <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:400;letter-spacing:0.02em;color:rgba(255,255,255,0.55);">Methionine Pricing Cockpit</span>
+      </div>
+    </a>
+
+    <div class="nav-tabs">
+      <a href="pricing.html"    class="nav-tab active">Price Cockpit</a>
+      <a href="autopilot.html"  class="nav-tab">Autopilot</a>
+      <a href="parameters.html" class="nav-tab">Parameters</a>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div style="position:relative;">
+      <button class="nav-menu-btn" id="menuBtn" onclick="toggleMenu()">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-dropdown" id="navDropdown">
+        <a href="login.html" style="color:var(--text-secondary);">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 3H3v10h4"/><path d="M10 11l3-3-3-3"/><line x1="13" y1="8" x2="6.5" y2="8"/></svg>
+          Log out
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Filter Bar ── -->
+  <div class="filter-bar" id="filterBar"></div>
+
+  <!-- ── Toolbar ── -->
+  <div class="subtab-bar">
+    <div class="subtab-spacer"></div>
+    <span class="rerun-timestamp" id="rerunTimestamp">Last updated: 8:00 AM today</span>
+    <button class="accept-all-btn" id="bulkBtn" type="button" disabled style="margin-right:8px;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 4.5h10M2 7h10M2 9.5h6"/><path d="M10.2 8.6l1.1 1.1 2-2.2"/>
+      </svg>
+      <span class="bulk-btn-label">Bulk update (0)</span>
+    </button>
+    <button class="accept-all-btn" id="acceptAllBtn" type="button" disabled style="margin-right:8px;">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3,7 6,10 11,4"/></svg>
+      <span class="accept-all-label">Accept (0)</span>
+    </button>
+    <button class="commit-btn" id="commitBtn" type="button" disabled style="margin-right:12px;">
+      <span class="commit-spinner"></span>
+      <span class="commit-label">Commit (0)</span>
+    </button>
+    <button class="btn-adv-filters" onclick="toggleAdvDrawer()">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="4" x2="12" y2="4"/><line x1="4" y1="7" x2="10" y2="7"/><line x1="6" y1="10" x2="8" y2="10"/></svg>
+      Advanced filters
+    </button>
+    <button class="btn-save" id="saveBtn" onclick="saveChanges()" style="display:none;margin-left:8px;">Save changes</button>
+  </div>
+
+  <!-- ── Legend ── -->
+  <div class="status-legend">
+    <span class="status-legend-group">Benchmarks:</span>
+    <span class="status-legend-item">Feedinfo &middot; Boyar (weekly published prices)</span>
+    <span class="status-legend-group" style="margin-left:18px;">Prices:</span>
+    <span class="status-legend-item">&euro;/t Europe &middot; $/t Asia &amp; Americas</span>
+    <span class="status-legend-group" style="margin-left:18px;">Flow:</span>
+    <span class="status-legend-item">Market signals &rarr; Price forecast &rarr; Guidance corridor &rarr; Explanation &rarr; Your decision</span>
+  </div>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <div class="table-wrap" id="tableWrap">
+      <table class="data-table" id="pricingTable">
+        <thead>
+          <tr>
+            <th class="col-select"><input type="checkbox" class="row-select" id="selectAllRows" aria-label="Select all visible product-markets" title="Select all visible product-markets"></th>
+            <th class="sortable" data-sort-key="name" data-sort-type="text" style="min-width:210px;"><span class="th-inner"><span>Market <span class="th-sub">Region &rsaquo; Country &rsaquo; Product</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="capUtil" data-sort-type="num"><span class="th-inner"><span>Capacity <span class="th-sub">utilization</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="alertCount" data-sort-type="num" style="width:66px;"><span class="th-inner"><span>Alerts</span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="intakePct" data-sort-type="num"><span class="th-inner"><span>Order Intake <span class="th-sub">% of plan</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="momentum" data-sort-type="num"><span class="th-inner"><span>Demand <span class="th-sub">momentum</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="signal" data-sort-type="num" style="width:84px;"><span class="th-inner"><span>Market <span class="th-sub">signal</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="feedinfo" data-sort-type="num" style="text-align:right;"><span class="th-inner"><span>Feedinfo <span class="th-sub">/t &middot; 4-wk</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="boyar" data-sort-type="num" style="text-align:right;"><span class="th-inner"><span>Boyar <span class="th-sub">/t</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="varCost" data-sort-type="num" style="text-align:right;"><span class="th-inner"><span>Variable <span class="th-sub">cost /t</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="price" data-sort-type="num" style="text-align:right;"><span class="th-inner"><span>Current <span class="th-sub">price /t</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="rec" data-sort-type="num" style="text-align:right;"><span class="th-inner"><span>Price Guidance <span class="th-sub">corridor low&ndash;high</span></span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th class="sortable" data-sort-key="recPct" data-sort-type="num"><span class="th-inner"><span>Recommendation</span><span class="sort-ind" aria-hidden="true"><span class="sa-up">&#9650;</span><span class="sa-down">&#9660;</span></span></span></th>
+            <th style="width:64px;">Action</th>
+            <th class="price-change-abs" style="width:80px;min-width:80px;padding-left:8px;padding-right:4px;">Price Change <span class="th-sub">(abs. /t)</span></th>
+            <th class="price-change-pct" style="width:72px;min-width:72px;padding-left:4px;padding-right:8px;">Price Change <span class="th-sub">(%)</span></th>
+            <th style="width:60px;">Notes</th>
+            <th style="width:32px;"></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Panels Container -->
+    <div class="panels-container" id="panelsContainer">
+
+      <!-- Price History Panel -->
+      <div class="unit-pricing-wrap" id="unitPricingWrap" style="display:none;">
+        <div class="panel-collapse-handle" onclick="toggleUnitPricing()">
+          <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,5 7,9 11,5"/></svg>
+        </div>
+        <div class="unit-pricing-panel" id="unitPricingPanel">
+          <div class="panel-header-bar">
+            <span style="font-size:14px;font-weight:600;color:#fff;">Price History</span>
+            <span style="color:#3d4150;margin:0 10px;">|</span>
+            <span style="font-size:13px;color:#9ca3af;" id="unitPricingUnitId"></span>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
+              <span class="legend-item"><span class="legend-line" style="background:#e8007d"></span>List price</span>
+              <span class="legend-item"><span class="legend-line" style="background:#60a5fa;border-top:2px dashed #60a5fa;height:0;"></span>Realized net price</span>
+              <span class="legend-item"><span class="legend-line" style="background:#9ca3af;border-top:2px dotted #9ca3af;height:0;"></span>Feedinfo</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#fbbf24"></span>Override</span>
+              <button onclick="toggleUnitPricing()" title="Close panel" style="background:none;border:none;cursor:pointer;color:#6b7280;display:flex;align-items:center;padding:4px 8px;border-radius:4px;margin-left:8px;" onmouseover="this.style.color='#e5e7eb'" onmouseout="this.style.color='#6b7280'"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg></button>
+            </div>
+          </div>
+          <div style="padding:12px 20px;flex:1;overflow:hidden;">
+            <div style="position:relative;width:100%;height:100%;">
+              <canvas id="unitPricingChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capacity Utilization & Market Price Panel -->
+      <div class="exposure-wrap" id="exposureWrap" style="display:none;">
+        <div class="panel-collapse-handle" onclick="toggleExposure()">
+          <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,5 7,9 11,5"/></svg>
+        </div>
+        <div class="exposure-panel" id="exposurePanel">
+          <div class="panel-header-bar" style="display:flex;align-items:center;height:44px;padding:0 16px;border-bottom:1px solid var(--nav-border);flex-shrink:0;gap:12px;">
+            <span class="exposure-title">Capacity Utilization &amp; Market Price</span>
+            <span style="color:#3d4150;">|</span>
+            <span class="exposure-prop" id="exposurePropName" style="font-size:13px;color:#9ca3af;">Select a market</span>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+              <button onclick="toggleExposure()" title="Close panel" style="background:none;border:none;cursor:pointer;color:#6b7280;display:flex;align-items:center;padding:4px;border-radius:4px;" onmouseover="this.style.color='#e5e7eb'" onmouseout="this.style.color='#6b7280'"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg></button>
+            </div>
+          </div>
+          <div class="exposure-inner">
+            <div class="exposure-charts">
+              <div class="chart-box">
+                <div class="chart-label">
+                  Capacity utilization <span style="font-size:10px;color:#6b7280;">in %</span>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-line" style="background:#f5a623"></span>Utilization</span>
+                    <span class="legend-item"><span class="legend-line" style="background:#dc2626;border-top:1px dashed #dc2626;height:0;"></span>Alert threshold</span>
+                  </div>
+                </div>
+                <div class="chart-canvas-wrap" id="exposureChartWrap"><canvas id="exposureChart"></canvas></div>
+              </div>
+              <div class="chart-box">
+                <div class="chart-label">
+                  Market price <span style="font-size:10px;color:#6b7280;" id="compChartUnit">per t</span>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-line" style="background:#9ca3af"></span>Feedinfo</span>
+                    <span class="legend-item"><span class="legend-line" style="background:#60a5fa"></span>Boyar</span>
+                    <span class="legend-item"><span class="legend-line" style="background:#e8007d"></span>Adisseo price</span>
+                    <span class="legend-item"><span class="legend-line" style="background:#475569;border-top:1px dashed #475569;height:0;"></span>Variable cost</span>
+                  </div>
+                </div>
+                <div class="chart-canvas-wrap" id="compChartWrap"><canvas id="compChart"></canvas></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Advanced Filters Drawer -->
+    <div class="adv-drawer" id="advDrawer">
+      <div class="adv-drawer-header">
+        <span class="adv-drawer-title">Advanced filters</span>
+        <button class="adv-close" onclick="toggleAdvDrawer()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
+        </button>
+      </div>
+      <div class="adv-drawer-body">
+        <div class="adv-section">
+          <div class="adv-section-title">Product-market ID</div>
+          <input type="text" id="unitIdSearch" placeholder="e.g. DE-POW" oninput="renderTable()" style="width:100%;border:1px solid var(--border-mid);border-radius:var(--radius);padding:7px 10px;font-family:'Inter',sans-serif;font-size:12px;color:var(--text-primary);background:var(--surface);outline:none;">
+        </div>
+        <div class="adv-section">
+          <div class="adv-section-title">Alerts</div>
+          <select class="adv-full-select" id="alertFilter" onchange="renderTable()">
+            <option value="">All alerts</option>
+            <option value="marketMove">Significant market movement</option>
+            <option value="capUtil">Capacity utilization &gt;90%</option>
+            <option value="corridor">Price outside corridor</option>
+          </select>
+        </div>
+        <div class="adv-section">
+          <div class="adv-section-title">Recommendation</div>
+          <select class="adv-full-select" id="recFilter" onchange="renderTable()">
+            <option value="">All</option>
+            <option>Increase</option>
+            <option>Decrease</option>
+            <option>Hold</option>
+          </select>
+        </div>
+        <div class="adv-section">
+          <div class="adv-section-title">Market signal</div>
+          <select class="adv-full-select" id="signalFilter" onchange="renderTable()">
+            <option value="">All</option>
+            <option value="up">Strengthening</option>
+            <option value="flat">Stable</option>
+            <option value="down">Softening</option>
+          </select>
+        </div>
+      </div>
+      <div class="adv-footer">
+        <button class="btn-apply" onclick="renderTable();toggleAdvDrawer()">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Market Price Forecast Modal ── -->
+<div class="bc-backdrop" id="bcBackdrop" aria-hidden="true"></div>
+
+<!-- ── Market Attributes Modal ── -->
+<div class="modal-backdrop" id="commAttrModal">
+  <div class="modal" style="width:520px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Market profile</div>
+        <div class="modal-subtitle" id="commAttrName"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('commAttrModal')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="commAttrFacts" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Key indicators</div>
+      <div id="commAttrAmenities" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('commAttrModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alerts tooltip -->
+<div class="tooltip-popup" id="alertsTooltip">
+  <div class="tooltip-title">Alerts in effect</div>
+  <div id="alertsTooltipBody"></div>
+</div>
+
+<!-- Calendar popup -->
+<div id="calendarModal" class="calendar-popup">
+  <div class="calendar-header">
+    <button class="calendar-nav" id="calPrev" onclick="calNav(-1)"><svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="7,1 3,5 7,9"/></svg></button>
+    <span class="calendar-month" id="calMonthLabel"></span>
+    <button class="calendar-nav" id="calNext" onclick="calNav(1)"><svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3,1 7,5 3,9"/></svg></button>
+  </div>
+  <div class="calendar-weekdays"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+  <div class="calendar-days" id="calDays"></div>
+</div>
+
+<!-- ── Bulk price update modal ── -->
+<div class="bulk-backdrop" id="bulkBackdrop" aria-hidden="true">
+  <div class="bulk-modal" role="dialog" aria-modal="true" aria-labelledby="bulkTitle">
+    <div class="bulk-modal-header">
+      <div>
+        <div class="bulk-modal-title" id="bulkTitle">Bulk price update</div>
+        <div class="bulk-modal-sub" id="bulkSub">0 product-markets selected</div>
+      </div>
+      <button class="bulk-modal-close" type="button" id="bulkCloseBtn" aria-label="Close">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>
+      </button>
+    </div>
+    <div class="bulk-modal-body">
+      <div class="bulk-type-row" role="radiogroup" aria-label="Adjustment type">
+        <label class="bulk-type-opt"><input type="radio" name="bulkType" value="pct" checked><span>Percentage (%)</span></label>
+        <label class="bulk-type-opt"><input type="radio" name="bulkType" value="amt"><span>Amount (per t)</span></label>
+      </div>
+      <div class="bulk-value-row">
+        <label for="bulkValue">Adjustment</label>
+        <input type="number" id="bulkValue" step="0.5" placeholder="e.g. 3 or -2">
+        <span class="bulk-unit" id="bulkUnit">%</span>
+      </div>
+      <div class="bulk-hint">
+        Applied to each product-market's <b>current price</b> in its own currency. Positive raises, negative lowers.
+        Updated rows are marked <b>Overridden</b> and queued for Commit.
+      </div>
+      <div class="bulk-preview" id="bulkPreview"></div>
+    </div>
+    <div class="bulk-modal-footer">
+      <button class="bulk-btn-ghost" type="button" id="bulkCancelBtn">Cancel</button>
+      <button class="bulk-btn-primary" type="button" id="bulkApplyBtn" disabled>Apply to 0 rows</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Note Modal ── -->
+<div class="modal-backdrop" id="noteModal">
+  <div class="modal" style="width:440px;">
+    <div class="modal-header">
+      <div><div class="modal-title">Notes</div><div class="modal-subtitle" id="noteModalUnit"></div></div>
+      <button class="modal-close" onclick="closeModal('noteModal')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Note</label>
+        <textarea id="noteTextarea" rows="4" class="note-textarea" placeholder="Add a note..."></textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Expires</label>
+        <button class="date-picker-btn" id="noteExpiryBtn" onclick="openCalendar('noteExpiry', this)" style="background:var(--surface);border:1px solid var(--border-mid);color:var(--text-primary);">
+          <span id="noteExpiryLabel">Select date</span>
+          <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="#6b7280" stroke-width="1.5"><rect x="1" y="2" width="12" height="11" rx="1.5"/><line x1="1" y1="6" x2="13" y2="6"/><line x1="4" y1="1" x2="4" y2="3"/><line x1="10" y1="1" x2="10" y2="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('noteModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNote()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lock Price Modal ── -->
+<div class="modal-backdrop" id="lockModal">
+  <div class="modal" style="width:min(95vw,520px);">
+    <div class="modal-header">
+      <div><div class="modal-title" id="lockModalTitle">Lock Price</div><div class="modal-subtitle" id="lockModalUnit"></div></div>
+      <button class="modal-close" onclick="closeModal('lockModal')"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="13" y2="13"/><line x1="13" y1="3" x2="3" y2="13"/></svg></button>
+    </div>
+    <div class="modal-body" style="padding:18px 20px;">
+      <div style="margin-bottom:18px;">
+        <div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:8px;">Lock until</div>
+        <div style="display:flex;border:1px solid var(--border-mid);border-radius:var(--radius);overflow:hidden;max-width:360px;">
+          <button type="button" id="lockMode_indef" onclick="_setLockMode('indef')" style="flex:1;padding:8px 14px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;background:var(--surface);color:var(--text-secondary);">Indefinite</button>
+          <button type="button" id="lockMode_date"  onclick="_setLockMode('date')"  style="flex:1;padding:8px 14px;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;background:var(--surface);color:var(--text-secondary);">Until date</button>
+        </div>
+        <div id="lockDateRow" style="display:none;margin-top:10px;">
+          <button type="button" id="lockDateTrigger" class="lock-date-trigger is-placeholder">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2.5" width="11" height="10" rx="1"/><line x1="1.5" y1="5.5" x2="12.5" y2="5.5"/><line x1="4.5" y1="1" x2="4.5" y2="4"/><line x1="9.5" y1="1" x2="9.5" y2="4"/></svg>
+            <span id="lockDateLabel">Select date</span>
+          </button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:6px;">Reason / notes <span style="font-weight:400;text-transform:none;color:var(--text-muted);">(optional)</span></div>
+        <input type="text" id="lockReason" maxlength="120" placeholder="e.g. Contract negotiation, tender in progress" style="width:100%;border:1px solid var(--border-mid);border-radius:var(--radius);padding:8px 10px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text-primary);background:var(--surface);outline:none;">
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;align-items:center;gap:8px;">
+      <button type="button" id="lockRemoveBtn" onclick="removeLockFromModal()" class="btn btn-ghost" style="display:none;color:#e05252;border:1px solid rgba(248,113,113,0.35);">Remove Lock</button>
+      <div style="flex:1;"></div>
+      <button type="button" onclick="closeModal('lockModal')" class="btn btn-ghost">Cancel</button>
+      <button type="button" onclick="saveLockFromModal()" class="btn btn-primary">Save Lock</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────
+let expandedRegions = new Set(['EU']);      // Europe open on load for the story
+let expandedCountries = {};
+let exposureOpen = false;
+let exposurePropId = null;
+let advDrawerOpen = false;
+let exposureChartInst = null;
+let compChartInst = null;
+let unitPricingChartInst = null;
+let unitPricingOpen = false;
+const alertCfg = ALERT_DEFAULTS;
+
+// Review decisions — id → { state: 'accepted'|'rejected'|'overridden', overrideValue }
+const recStates = {};
+
+function findPM(id) { const f = findProductMarket(id); return f ? f.pm : null; }
+
+// ── Currency formatting ───────────────────────────────────
+function fmtP(n, sym) { return n != null ? (sym || '') + Math.round(n).toLocaleString('en-GB') : ''; }
+function fmtPct(n) { return n != null ? (n > 0 ? '+' : '') + n + '%' : ''; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+// ── Price Override System (manual Δ inputs) ───────────────
+const priceOverrides = {};
+
+function computeRec(originalRec, overrideKey) {
+  const o = priceOverrides[overrideKey];
+  if (!o) return originalRec;
+  let v = originalRec;
+  if (o.absChange != null) v = v + o.absChange;
+  if (o.pctChange != null) v = v * (1 + o.pctChange / 100);
+  return Math.round(v);
+}
+
+// Effective guidance: lock beats bulk-override beats manual Δ beats engine.
+function effectiveRec(pm) {
+  if (pm.lock && pm.lock.locked) return pm.lock.lockedPrice ?? pm.rec;
+  const rs = recStates[pm.id];
+  if (rs && rs.state === 'overridden' && typeof rs.overrideValue === 'number') return rs.overrideValue;
+  return computeRec(pm.rec, pm.id);
+}
+
+function recActionFor(pm) {
+  const rs = recStates[pm.id];
+  if (rs && rs.state === 'rejected') return 'Hold';
+  const shown = effectiveRec(pm);
+  if (shown > pm.price) return 'Increase';
+  if (shown < pm.price) return 'Decrease';
+  return 'Hold';
+}
+
+function effectivePct(pm) {
+  const rs = recStates[pm.id];
+  if (rs && rs.state === 'rejected') return 0;
+  const effRec = effectiveRec(pm);
+  return pm.price ? Math.round((effRec - pm.price) / pm.price * 1000) / 10 : 0;
+}
+
+function recActionChip(action, stateTag, pct) {
+  const cls  = action === 'Increase' ? 'ra-up' : action === 'Decrease' ? 'ra-down' : 'ra-flat';
+  const icon = action === 'Increase' ? '\u2191' : action === 'Decrease' ? '\u2193' : '\u2014';
+  const pctTxt = (pct != null && action !== 'Hold') ? '&nbsp;' + (pct > 0 ? '+' : '') + pct + '%' : '';
+  return '<span class="rec-action-chip ' + cls + '">' + icon + '&nbsp;' + action + pctTxt + '</span>' + (stateTag || '');
+}
+
+function recSummaryHtml(list) {
+  let up = 0, down = 0, pctSum = 0;
+  list.forEach(u => {
+    const a = recActionFor(u);
+    if (a === 'Increase') up++; else if (a === 'Decrease') down++;
+    pctSum += effectivePct(u);
+  });
+  const avgPct = list.length ? Math.round(pctSum / list.length * 10) / 10 : 0;
+  if (!up && !down) return '<span style="color:var(--text-muted);font-size:12px;">\u2014</span>';
+  const parts = [];
+  if (up) parts.push('<span style="color:#166534;font-weight:600;">\u2191' + up + '</span>');
+  if (down) parts.push('<span style="color:#991b1b;font-weight:600;">\u2193' + down + '</span>');
+  const avgCls = avgPct > 0 ? '#166534' : avgPct < 0 ? '#991b1b' : 'var(--text-secondary)';
+  return '<span style="font-size:12px;white-space:nowrap;">' + parts.join(' ') +
+    ' <span style="color:' + avgCls + ';">\u00b7 avg ' + (avgPct > 0 ? '+' : '') + avgPct + '%</span></span>';
+}
+
+function recStateTag(id) {
+  const rs = recStates[id];
+  if (!rs || !rs.state) return '';
+  const map = { accepted: ['t-accepted', 'ACC'], rejected: ['t-rejected', 'REJ'], overridden: ['t-overridden', 'OVR'] };
+  const m = map[rs.state];
+  return m ? '<span class="rec-state-tag ' + m[0] + '">' + m[1] + '</span>' : '';
+}
+
+// Intake cell: % of plan with the tonnes alongside
+function intakeCellHtml(intake, plan, onclick) {
+  const pct = plan > 0 ? Math.round(intake / plan * 100) : 0;
+  return '<a href="javascript:void(0)" onclick="' + onclick + '" style="color:var(--accent);text-decoration:underline;" title="' +
+    intake.toLocaleString('en-GB') + ' t ordered vs ' + plan.toLocaleString('en-GB') + ' t planned this month">' + pct + '%</a>' +
+    ' <span style="font-size:10.5px;color:var(--text-muted);white-space:nowrap;">' + intake.toLocaleString('en-GB') + '/' + plan.toLocaleString('en-GB') + ' t</span>';
+}
+
+function momentumCell(v) {
+  const cls = v > 3 ? 'pace-pos' : v < -3 ? 'pace-neg' : 'pace-flat';
+  return '<span class="' + cls + '">' + (v > 0 ? '+' : '') + v + '%</span>';
+}
+
+function signalBadge(score) {
+  const s = signalLevelForScore(score);
+  return '<span class="dl-badge dl-' + s.level + '" title="' + esc(s.label + ' \u2014 ' + s.interp) + '">' + s.short + '</span>';
+}
+
+function benchCell(val, sym, move) {
+  const cls = move > 1 ? 'pace-pos' : move < -1 ? 'pace-neg' : 'pace-flat';
+  return fmtP(val, sym) + (move != null ? '<span class="bench-move ' + cls + '">' + (move > 0 ? '+' : '') + move + '%</span>' : '');
+}
+
+function guidanceCellHtml(pm, effRec, extraClass, onclick) {
+  const lo = pm.corridorLow != null ? pm.corridorLow + (effRec - pm.rec) : null;
+  const hi = pm.corridorHigh != null ? pm.corridorHigh + (effRec - pm.rec) : null;
+  const corridor = lo != null ? '<span class="guidance-corridor">' + fmtP(lo, pm.sym) + '\u2013' + fmtP(hi, pm.sym) + '</span>' : '';
+  return '<a href="javascript:void(0)" onclick="' + onclick + '" style="color:var(--accent);text-decoration:underline;cursor:pointer;font-weight:600;">' + fmtP(effRec, pm.sym) + '</a>' + corridor;
+}
+
+function onPriceChange(rowKey, type, rawValue, rowLevel) {
+  const num = parseFloat(rawValue.replace(/[^0-9.\-]/g, ''));
+  if (isNaN(num)) {
+    if (priceOverrides[rowKey]) priceOverrides[rowKey][type === 'abs' ? 'absChange' : 'pctChange'] = null;
+  } else {
+    if (!priceOverrides[rowKey]) priceOverrides[rowKey] = { absChange: null, pctChange: null };
+    if (type === 'abs') { priceOverrides[rowKey].absChange = num; priceOverrides[rowKey].pctChange = null; }
+    else { priceOverrides[rowKey].pctChange = num; priceOverrides[rowKey].absChange = null; }
+    if (rowLevel === 'country' || rowLevel === 'region') cascadeOverride(rowKey, rowLevel, num, type);
+  }
+  renderTableInPlace();
+  checkSaveVisibility();
+}
+
+function checkSaveVisibility() {
+  const hasChanges = Object.values(priceOverrides).some(o => o.absChange != null || o.pctChange != null);
+  const btn = document.getElementById('saveBtn');
+  if (btn) btn.style.display = hasChanges ? 'inline-flex' : 'none';
+}
+
+function saveChanges() {
+  const changedCount = Object.keys(priceOverrides).filter(k => priceOverrides[k].absChange != null || priceOverrides[k].pctChange != null).length;
+  Object.keys(priceOverrides).forEach(k => delete priceOverrides[k]);
+  document.getElementById('saveBtn').style.display = 'none';
+  renderTable();
+  showToast(changedCount + ' price change' + (changedCount !== 1 ? 's' : '') + ' saved');
+}
+
+function showToast(message) {
+  const existing = document.getElementById('toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'toast';
+  el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1d23;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid var(--accent);box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:9999;opacity:0;transition:opacity .2s;display:flex;align-items:center;gap:8px;';
+  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="2,7 5.5,10.5 12,3"/></svg>' + message;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 2500);
+}
+
+function cascadeOverride(sourceKey, level, num, type) {
+  const mk = () => ({ absChange: type==='abs'?num:null, pctChange: type==='pct'?num:null, inherited: true });
+  for (const region of PRICING_DATA) {
+    if (level === 'region' && region.id === sourceKey) {
+      for (const c of region.countries) {
+        priceOverrides[c.id] = mk();
+        for (const p of c.products) priceOverrides[p.id] = mk();
+      }
+    }
+    if (level === 'country') {
+      for (const c of region.countries) {
+        if (c.id === sourceKey) for (const p of c.products) priceOverrides[p.id] = mk();
+      }
+    }
+  }
+}
+
+function renderTableInPlace() {
+  const wrap = document.getElementById('tableWrap');
+  const scrollTop = wrap.scrollTop;
+  renderTable();
+  wrap.scrollTop = scrollTop;
+}
+
+// ── Accept / Reject / Commit ──────────────────────────────
+function toggleAcceptUnit(id) {
+  const cur = recStates[id];
+  if (cur && cur.state === 'accepted') delete recStates[id];
+  else recStates[id] = { state: 'accepted' };
+  renderTableInPlace();
+  refreshCommitBtn();
+}
+function toggleRejectUnit(id) {
+  const cur = recStates[id];
+  if (cur && cur.state === 'rejected') delete recStates[id];
+  else recStates[id] = { state: 'rejected' };
+  renderTableInPlace();
+  refreshCommitBtn();
+}
+function refreshCommitBtn() {
+  const btn = document.getElementById('commitBtn');
+  if (!btn) return;
+  const n = Object.values(recStates).filter(st => st && (st.state || typeof st.overrideValue === 'number')).length;
+  btn.querySelector('.commit-label').textContent = 'Commit (' + n + ')';
+  btn.disabled = n === 0;
+}
+function commitDecisions() {
+  const btn = document.getElementById('commitBtn');
+  if (!btn || btn.disabled || btn.classList.contains('is-loading')) return;
+  const n = Object.values(recStates).filter(st => st && (st.state || typeof st.overrideValue === 'number')).length;
+  btn.classList.add('is-loading');
+  btn.querySelector('.commit-label').textContent = 'Committing\u2026';
+  setTimeout(() => {
+    Object.keys(recStates).forEach(id => {
+      const st = recStates[id];
+      const pm = findPM(id);
+      if (pm && (st.state === 'accepted' || st.state === 'overridden')) {
+        // Accepted guidance becomes the new current price
+        pm.price = effectiveRec(pm);
+        pm.pctChange = Math.round(((pm.rec - pm.price) / pm.price) * 1000) / 10;
+      }
+      delete recStates[id];
+    });
+    btn.classList.remove('is-loading');
+    refreshCommitBtn();
+    renderTable();
+    showToast(n + ' price decision' + (n === 1 ? '' : 's') + ' committed');
+  }, 1200);
+}
+
+// ── Bulk selection ────────────────────────────────────────
+const selectedUnits = new Set();
+
+function syncBulkToolbar() {
+  const bulkBtn = document.getElementById('bulkBtn');
+  if (bulkBtn) {
+    bulkBtn.querySelector('.bulk-btn-label').textContent = 'Bulk update (' + selectedUnits.size + ')';
+    bulkBtn.disabled = selectedUnits.size === 0;
+  }
+  const accBtn = document.getElementById('acceptAllBtn');
+  if (accBtn) {
+    accBtn.querySelector('.accept-all-label').textContent = 'Accept (' + selectedUnits.size + ')';
+    accBtn.disabled = selectedUnits.size === 0;
+  }
+  const selAll = document.getElementById('selectAllRows');
+  if (selAll) selAll.checked = _renderedUnits.length > 0 && _renderedUnits.every(u => selectedUnits.has(u.id));
+  refreshCommitBtn();
+}
+
+document.getElementById('tableBody').addEventListener('change', e => {
+  const cb = e.target.closest('input.row-select');
+  if (!cb) return;
+  if (cb.classList.contains('unit-select')) {
+    if (cb.checked) selectedUnits.add(cb.dataset.id); else selectedUnits.delete(cb.dataset.id);
+  } else if (cb.classList.contains('rt-select')) {
+    const c = COUNTRIES.find(x => x.id === cb.dataset.country);
+    (c?.products ?? []).forEach(p => { if (cb.checked) selectedUnits.add(p.id); else selectedUnits.delete(p.id); });
+  } else if (cb.classList.contains('house-select')) {
+    const region = PRICING_DATA.find(r => r.id === cb.dataset.region);
+    (region?.countries ?? []).forEach(c => c.products.forEach(p => { if (cb.checked) selectedUnits.add(p.id); else selectedUnits.delete(p.id); }));
+  }
+  renderTableInPlace();
+});
+
+// ── Bulk price update modal ──
+const bulkBackdrop = document.getElementById('bulkBackdrop');
+const bulkValueEl = document.getElementById('bulkValue');
+function bulkType() { return document.querySelector('input[name="bulkType"]:checked').value; }
+function bulkNewPrice(pm, type, v) {
+  const raw = type === 'pct' ? pm.price * (1 + v / 100) : pm.price + v;
+  return Math.max(1, Math.round(raw / 5) * 5);
+}
+function refreshBulkPreview() {
+  const v = parseFloat(bulkValueEl.value);
+  const applyBtn = document.getElementById('bulkApplyBtn');
+  const preview = document.getElementById('bulkPreview');
+  applyBtn.textContent = 'Apply to ' + selectedUnits.size + ' row' + (selectedUnits.size === 1 ? '' : 's');
+  if (isNaN(v) || v === 0 || selectedUnits.size === 0) { applyBtn.disabled = true; preview.innerHTML = ''; return; }
+  applyBtn.disabled = false;
+  const type = bulkType();
+  const sample = [...selectedUnits].slice(0, 3).map(id => {
+    const f = findProductMarket(id);
+    if (!f) return '';
+    return '<div class="bulk-preview-row"><span>' + esc(f.country.name) + ' \u00b7 ' + esc(f.pm.product) +
+      '</span><span>' + fmtP(f.pm.price, f.pm.sym) + ' \u2192 <b>' + fmtP(bulkNewPrice(f.pm, type, v), f.pm.sym) + '</b>/t</span></div>';
+  }).join('');
+  const more = selectedUnits.size > 3 ? '<div class="bulk-preview-more">\u2026 and ' + (selectedUnits.size - 3) + ' more</div>' : '';
+  preview.innerHTML = '<div class="bulk-preview-title">Preview</div>' + sample + more;
+}
+function openBulkModal() {
+  if (!selectedUnits.size) return;
+  document.getElementById('bulkSub').textContent = selectedUnits.size + ' product-market' + (selectedUnits.size === 1 ? '' : 's') + ' selected';
+  bulkValueEl.value = '';
+  refreshBulkPreview();
+  bulkBackdrop.classList.add('is-open');
+  bulkBackdrop.setAttribute('aria-hidden', 'false');
+  setTimeout(() => bulkValueEl.focus(), 30);
+}
+function closeBulkModal() { bulkBackdrop.classList.remove('is-open'); bulkBackdrop.setAttribute('aria-hidden', 'true'); }
+document.getElementById('bulkBtn').addEventListener('click', openBulkModal);
+document.getElementById('bulkCloseBtn').addEventListener('click', closeBulkModal);
+document.getElementById('bulkCancelBtn').addEventListener('click', closeBulkModal);
+bulkBackdrop.addEventListener('click', e => { if (e.target === bulkBackdrop) closeBulkModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && bulkBackdrop.classList.contains('is-open')) closeBulkModal(); });
+bulkValueEl.addEventListener('input', refreshBulkPreview);
+document.querySelectorAll('input[name="bulkType"]').forEach(r => r.addEventListener('change', () => {
+  document.getElementById('bulkUnit').textContent = bulkType() === 'pct' ? '%' : '/t';
+  refreshBulkPreview();
+}));
+document.getElementById('bulkApplyBtn').addEventListener('click', () => {
+  const v = parseFloat(bulkValueEl.value);
+  if (isNaN(v) || v === 0 || !selectedUnits.size) return;
+  const type = bulkType();
+  let n = 0;
+  selectedUnits.forEach(id => {
+    const pm = findPM(id);
+    if (!pm) return;
+    recStates[id] = { state: 'overridden', overrideValue: bulkNewPrice(pm, type, v) };
+    n++;
+  });
+  selectedUnits.clear();
+  closeBulkModal();
+  renderTableInPlace();
+  showToast(n + ' price' + (n === 1 ? '' : 's') + ' updated (' + (type === 'pct' ? (v > 0 ? '+' : '') + v + '%' : (v > 0 ? '+' : '') + v + '/t') + ')');
+});
+
+// Accept the selected rows' guidance
+document.getElementById('acceptAllBtn').addEventListener('click', () => {
+  if (!selectedUnits.size) return;
+  let n = 0;
+  selectedUnits.forEach(id => {
+    const pm = findPM(id);
+    if (!pm || (pm.lock && pm.lock.locked)) return;
+    recStates[id] = { state: 'accepted' };
+    n++;
+  });
+  selectedUnits.clear();
+  renderTableInPlace();
+  showToast('Accepted ' + n + ' price guidance' + (n === 1 ? '' : 's'));
+});
+
+document.getElementById('selectAllRows').addEventListener('change', e => {
+  if (e.target.checked) _renderedUnits.forEach(u => selectedUnits.add(u.id));
+  else _renderedUnits.forEach(u => selectedUnits.delete(u.id));
+  renderTableInPlace();
+});
+
+// ── Nav menu ──────────────────────────────────────────────
+function toggleMenu() { document.getElementById('navDropdown').classList.toggle('open'); }
+document.addEventListener('click', e => {
+  if (!e.target.closest('.nav-menu-btn') && !e.target.closest('.nav-dropdown')) document.getElementById('navDropdown').classList.remove('open');
+});
+
+// ── Filters (shared pill component) ───────────────────────
+let pillFilters = null;
+function getMsValues(id) { return pillFilters ? pillFilters.values(id) : []; }
+function populateFilters() {
+  pillFilters = createPillFilters({
+    container: document.getElementById('filterBar'),
+    filters: [
+      { id: 'region',  label: 'Regions',          items: REGIONS.map(r => r.name) },
+      { id: 'country', label: 'Countries',        items: COUNTRIES.map(c => c.name) },
+      { id: 'product', label: 'Products',         items: PRODUCT_NAMES },
+      { id: 'pm',      label: 'Pricing Managers', items: PRICING_MANAGERS },
+    ],
+    storageKey: 'adisseo_filters',
+    onChange: renderTable,
+  });
+}
+
+// ── Input Formatting ──────────────────────────────────────
+function handleAbsInput(input, rowKey, rowLevel) { onPriceChange(rowKey, 'abs', input.value.replace(/[^0-9.\-]/g, ''), rowLevel); }
+function handlePctInput(input, rowKey, rowLevel) { onPriceChange(rowKey, 'pct', input.value.replace(/[^0-9.\-]/g, ''), rowLevel); }
+function applyAmtFormat(input) { const v = parseFloat(input.value.replace(/[^0-9.\-]/g, '')); input.value = isNaN(v) ? '' : v + '/t'; }
+function applyPctFormat(input) { const v = parseFloat(input.value.replace(/[^0-9.\-]/g, '')); input.value = isNaN(v) ? '' : v + '%'; }
+
+// ── Alerts — bell + tooltip ───────────────────────────────
+const alertConfig = {
+  marketMove: { label: 'Significant market movement', icon: '<polyline points="2,10 5,6 8,8 12,3"/><polyline points="9,3 12,3 12,6"/>' },
+  capUtil:    { label: 'Capacity utilization >90%',   icon: '<rect x="2" y="3" width="10" height="9" rx="1"/><rect x="4" y="6" width="2" height="4" fill="currentColor"/><rect x="7" y="4.5" width="2" height="5.5" fill="currentColor"/>' },
+  corridor:   { label: 'Price outside corridor',      icon: '<line x1="2" y1="4.5" x2="12" y2="4.5" stroke-dasharray="2 1.5"/><line x1="2" y1="9.5" x2="12" y2="9.5" stroke-dasharray="2 1.5"/><circle cx="7" cy="2.2" r="1.2" fill="currentColor"/>' },
+};
+
+function alertsCellHtml(alerts) {
+  if (!alerts || alerts.length === 0) return '';
+  const alertsJson = JSON.stringify(alerts.map(a => ({ type: a.type, tooltip: a.tooltip }))).replace(/"/g, '&quot;');
+  const badge = alerts.length > 1 ? `<span style="position:absolute;top:-4px;right:-6px;background:#f5a623;color:#fff;font-size:8px;font-weight:700;border-radius:8px;min-width:14px;height:14px;display:flex;align-items:center;justify-content:center;padding:0 3px;line-height:1;">${alerts.length}</span>` : '';
+  return `<div style="position:relative;display:inline-flex;"><button class="alert-bell" title="Alerts" onclick="showAlerts(event, ${alertsJson})" style="background:none;border:none;cursor:pointer;padding:0;display:inline-flex;align-items:center;">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#f5a623" stroke-width="1.5" stroke-linecap="round"><path d="M8 2a5 5 0 0 1 5 5c0 3.5 1.5 4.5 1.5 4.5h-13S3 10.5 3 7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="14" x2="9.5" y2="14"/></svg>
+  </button>${badge}</div>`;
+}
+function showAlerts(e, alerts) {
+  e.stopPropagation();
+  if (!alerts || alerts.length === 0) return;
+  const tt = document.getElementById('alertsTooltip');
+  const body = document.getElementById('alertsTooltipBody');
+  body.innerHTML = alerts.map(a => {
+    const cfg = alertConfig[a.type];
+    if (!cfg) return '';
+    return `<div class="tooltip-item" title="${esc(a.tooltip)}"><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">${cfg.icon}</svg> ${esc(a.tooltip)}</div>`;
+  }).join('');
+  tt.style.left = (e.clientX - 10) + 'px';
+  tt.style.top = (e.clientY + 16) + 'px';
+  tt.classList.toggle('open');
+}
+document.addEventListener('click', e => { if (!e.target.closest('.alert-bell')) document.getElementById('alertsTooltip').classList.remove('open'); });
+
+function noteCell(id, note) {
+  if (!note) {
+    return `<button class="add-concs-btn" onclick="openNoteModal('${id}', null)"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><line x1="7" y1="5" x2="7" y2="9"/><line x1="5" y1="7" x2="9" y2="7"/></svg>Add</button>`;
+  }
+  const noteJson = JSON.stringify(note).replace(/"/g, '&quot;');
+  return `<button title="${esc(note.text)}" onclick="openNoteModal('${id}', ${noteJson})" style="background:none;border:none;cursor:pointer;color:var(--accent);display:inline-flex;align-items:center;padding:0;">
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="1" width="10" height="12" rx="1.5"/><line x1="4.5" y1="4.5" x2="9.5" y2="4.5"/><line x1="4.5" y1="7" x2="9.5" y2="7"/><line x1="4.5" y1="9.5" x2="7" y2="9.5"/></svg>
+  </button>`;
+}
+function pmNotesCell(pm) {
+  const isLocked = !!(pm.lock && pm.lock.locked);
+  let title;
+  if (isLocked) {
+    title = pm.lock.lockUntil ? 'Locked until ' + new Date(pm.lock.lockUntil).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Locked indefinitely';
+  } else title = 'Lock price';
+  const iconPath = isLocked
+    ? `<svg width="13" height="13" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"><rect x="3" y="6.5" width="8" height="6" rx="1"/><path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke-linecap="round"/></svg>`
+    : `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="6.5" width="8" height="6" rx="1"/><path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/></svg>`;
+  return `<span style="display:inline-flex;align-items:center;gap:6px;">${noteCell(pm.id, pm.note)}<button class="lock-btn${isLocked?' locked':''}" title="${esc(title)}" onclick="openLockModal('${pm.id}')">${iconPath}</button></span>`;
+}
+
+// ── Column sorting ────────────────────────────────────────
+const listSort = { key: null, dir: null };
+
+function regionSortValue(region, key) {
+  switch (key) {
+    case 'name':       return region.name;
+    case 'capUtil':    return region.capUtil;
+    case 'alertCount': return unionAlerts(computeAlerts(region, alertCfg), region.countries.flatMap(c => c.products), alertCfg).length || null;
+    case 'intakePct':  return region.planIntake > 0 ? region.intake / region.planIntake : null;
+    case 'momentum':   return region.momentum;
+    case 'signal':     return region.signal;
+    case 'feedinfo':   return region.feedinfo;
+    case 'boyar':      return region.boyar;
+    case 'varCost':    return region.varCost;
+    case 'price':      return region.price;
+    case 'rec':        return region.rec;
+    case 'recPct': {
+      const list = region.countries.flatMap(c => c.products);
+      return list.length ? list.reduce((s, u) => s + effectivePct(u), 0) / list.length : null;
+    }
+  }
+  return null;
+}
+function sortByKey(arr, getValue, isText) {
+  if (!listSort.key || !listSort.dir) return arr;
+  const dir = listSort.dir === 'asc' ? 1 : -1;
+  return arr.map((x, i) => ({ x, i, v: getValue(x) })).sort((a, b) => {
+    const av = a.v, bv = b.v;
+    const aNull = av == null || (typeof av === 'number' && isNaN(av));
+    const bNull = bv == null || (typeof bv === 'number' && isNaN(bv));
+    if (aNull && bNull) return a.i - b.i;
+    if (aNull) return 1; if (bNull) return -1;
+    if (isText) { const cmp = String(av).localeCompare(String(bv)); return cmp !== 0 ? cmp * dir : a.i - b.i; }
+    if (av < bv) return -1 * dir; if (av > bv) return 1 * dir;
+    return a.i - b.i;
+  }).map(o => o.x);
+}
+function syncSortHeaders() {
+  document.querySelectorAll('#pricingTable thead th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sortKey === listSort.key && listSort.dir) th.classList.add(listSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+  });
+}
+document.querySelector('#pricingTable thead').addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if (!th) return;
+  const key = th.dataset.sortKey;
+  const firstDir = th.dataset.sortType === 'text' ? 'asc' : 'desc';
+  const secondDir = firstDir === 'asc' ? 'desc' : 'asc';
+  if (listSort.key !== key) { listSort.key = key; listSort.dir = firstDir; }
+  else if (listSort.dir === firstDir) listSort.dir = secondDir;
+  else { listSort.key = null; listSort.dir = null; }
+  syncSortHeaders();
+  renderTableInPlace();
+});
+
+// ── Table Rendering ───────────────────────────────────────
+let _renderedUnits = [];   // product-markets passing the current filters
+
+const dInputs = (key, level, sym) => `
+  <td class="price-change-abs" style="padding-left:8px;padding-right:4px;"><input class="price-input" type="text" value="${priceOverrides[key]?.absChange!=null?priceOverrides[key].absChange:''}" placeholder="${sym}" oninput="this.value=this.value.replace(/[^0-9.-]/g,'')" onkeydown="if(event.key==='Enter'){applyAmtFormat(this);handleAbsInput(this,'${key}','${level}');this.blur();}" onblur="applyAmtFormat(this)"></td>
+  <td class="price-change-pct" style="padding-left:4px;padding-right:8px;"><input class="price-input" type="text" value="${priceOverrides[key]?.pctChange!=null?priceOverrides[key].pctChange:''}" placeholder="%" oninput="this.value=this.value.replace(/[^0-9.-]/g,'')" onkeydown="if(event.key==='Enter'){applyPctFormat(this);handlePctInput(this,'${key}','${level}');this.blur();}" onblur="applyPctFormat(this)"></td>`;
+
+const askBtn = (onclick, title) => `<td><button type="button" onclick="event.stopPropagation();${onclick}" title="${title}" style="background:none;border:none;cursor:pointer;padding:3px 4px;color:var(--text-muted);opacity:0.45;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;transition:opacity .15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.45'"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5.5"/><path d="M5.5 5.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5"/><circle cx="7" cy="11" r=".6" fill="currentColor"/></svg></button></td>`;
+
+function renderTable() {
+  const tb = document.getElementById('tableBody');
+  tb.innerHTML = '';
+  _renderedUnits = [];
+
+  const regionF = getMsValues('region');
+  const countryF = getMsValues('country');
+  const productF = getMsValues('product');
+  const pmF = getMsValues('pm');
+  const idQuery = document.getElementById('unitIdSearch')?.value.trim().toLowerCase() ?? '';
+  const alertF = document.getElementById('alertFilter')?.value;
+  const recF = document.getElementById('recFilter')?.value;
+  const signalF = document.getElementById('signalFilter')?.value;
+
+  const pmPasses = (p) => {
+    if (idQuery && !p.id.toLowerCase().includes(idQuery)) return false;
+    if (productF.length && !productF.includes(p.product)) return false;
+    if (alertF && !computeAlerts(p, alertCfg).some(a => a.type === alertF)) return false;
+    if (recF && recActionFor(p) !== recF) return false;
+    if (signalF) {
+      const lvl = signalLevelForScore(p.signal).level;
+      if (signalF === 'up' && lvl < 4) return false;
+      if (signalF === 'flat' && lvl !== 3) return false;
+      if (signalF === 'down' && lvl > 2) return false;
+    }
+    return true;
+  };
+  const countryPasses = (c) => {
+    if (countryF.length && !countryF.includes(c.name)) return false;
+    if (pmF.length && !pmF.includes(c.pm)) return false;
+    return true;
+  };
+
+  // Visible structure: region → countries (filtered) → products (filtered)
+  let data = PRICING_DATA
+    .filter(r => !regionF.length || regionF.includes(r.name))
+    .map(r => ({ region: r, countries: r.countries.filter(countryPasses).map(c => ({ country: c, products: c.products.filter(pmPasses) })).filter(x => x.products.length) }))
+    .filter(x => x.countries.length);
+
+  if (idQuery) {
+    data.forEach(x => { expandedRegions.add(x.region.id); x.countries.forEach(y => { expandedCountries[y.country.id] = true; }); });
+  }
+  if (listSort.key && listSort.dir) {
+    data = sortByKey(data, x => regionSortValue(x.region, listSort.key), listSort.key === 'name');
+  }
+  data.forEach(x => x.countries.forEach(y => y.products.forEach(p => _renderedUnits.push(p))));
+
+  data.forEach(({ region, countries }) => {
+    const regionOpen = expandedRegions.has(region.id);
+    const allPMs = countries.flatMap(y => y.products);
+    const regionAlerts = unionAlerts(computeAlerts(region, alertCfg), region.countries.flatMap(c => c.products), alertCfg);
+    const allSel = allPMs.length > 0 && allPMs.every(p => selectedUnits.has(p.id));
+    const sym = region.sym;
+
+    const tr = document.createElement('tr');
+    tr.className = 'row-property';
+    tr.innerHTML = `
+      <td class="col-select"><input type="checkbox" class="row-select house-select" data-region="${region.id}" ${allSel ? 'checked' : ''} aria-label="Select all in region"></td>
+      <td>
+        <button class="expand-btn ${regionOpen ? 'open' : ''}" onclick="toggleRegion('${region.id}')">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,2 8,6 4,10"/></svg>
+        </button>
+        <strong>${region.name}</strong>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${region.countries.length} markets \u00b7 ${region.cur}/t</span>
+      </td>
+      <td><span class="avail-pct" style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();toggleExposureForProp('${region.id}','${esc(region.name)}','${region.id}',null)">${region.capUtil}%${region.capUtil > alertCfg.capUtil.threshold ? ' <span class="warn-icon">\u26a0</span>' : ''}</span></td>
+      <td>${alertsCellHtml(regionAlerts)}</td>
+      <td>${intakeCellHtml(region.intake, region.planIntake, `openForecastModal({level:'region',regionId:'${region.id}'})`)}</td>
+      <td>${momentumCell(region.momentum)}</td>
+      <td>${signalBadge(region.signal)}</td>
+      <td class="bench-cell">${benchCell(region.feedinfo, sym, region.benchMove4w)}</td>
+      <td class="bench-cell">${fmtP(region.boyar, sym)}</td>
+      <td class="bench-cell">${fmtP(region.varCost, sym)}</td>
+      <td style="text-align:right;color:var(--text-secondary);">${fmtP(region.price, sym)}</td>
+      <td class="guidance-cell" style="color:var(--text-secondary);">${fmtP(computeRec(region.rec, region.id), sym)}</td>
+      <td>${recSummaryHtml(allPMs)}</td>
+      <td></td>
+      ${dInputs(region.id, 'region', sym)}
+      <td></td>
+      <td></td>
+    `;
+    tb.appendChild(tr);
+    if (!regionOpen) return;
+
+    countries.forEach(({ country, products }) => {
+      const cOpen = expandedCountries[country.id];
+      const cAlerts = unionAlerts(computeAlerts(country, alertCfg), country.products, alertCfg);
+      const cSel = products.length > 0 && products.every(p => selectedUnits.has(p.id));
+      const ctr = document.createElement('tr');
+      ctr.className = 'row-bedtype';
+      ctr.innerHTML = `
+        <td class="col-select"><input type="checkbox" class="row-select rt-select" data-country="${country.id}" ${cSel ? 'checked' : ''} aria-label="Select all products in country"></td>
+        <td>
+          <button class="expand-btn ${cOpen ? 'open' : ''}" onclick="toggleCountry('${country.id}')">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,2 8,6 4,10"/></svg>
+          </button>
+          ${country.name}
+          <button onclick="openCommAttrModal('${country.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);display:inline-flex;align-items:center;padding:0 4px;vertical-align:middle;" title="Market profile">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><line x1="7" y1="6" x2="7" y2="10"/><circle cx="7" cy="4.5" r=".6" fill="currentColor"/></svg>
+          </button>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">${country.volume.toLocaleString('en-GB')} t/mo \u00b7 ${country.pm}</span>
+        </td>
+        <td><span class="avail-pct" style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();toggleExposureForProp('${country.id}','${esc(country.name)}','${region.id}','${country.id}')">${country.capUtil}%${country.capUtil > alertCfg.capUtil.threshold ? ' <span class="warn-icon">\u26a0</span>' : ''}</span></td>
+        <td>${alertsCellHtml(cAlerts)}</td>
+        <td>${intakeCellHtml(country.intake, country.planIntake, `openForecastModal({level:'country',countryId:'${country.id}'})`)}</td>
+        <td>${momentumCell(country.momentum)}</td>
+        <td>${signalBadge(country.signal)}</td>
+        <td class="bench-cell">${benchCell(country.feedinfo, sym, country.benchMove4w)}</td>
+        <td class="bench-cell">${fmtP(country.boyar, sym)}</td>
+        <td class="bench-cell">${fmtP(country.varCost, sym)}</td>
+        <td style="text-align:right;color:var(--text-secondary);">${fmtP(country.price, sym)}</td>
+        <td class="guidance-cell" style="color:var(--text-secondary);">${fmtP(computeRec(country.rec, country.id), sym)}</td>
+        <td>${recSummaryHtml(products)}</td>
+        <td></td>
+        ${dInputs(country.id, 'country', sym)}
+        <td>${noteCell(country.id, country.note)}</td>
+        ${askBtn(`openRowCopilot(null,'${country.id}')`, 'Ask about this market')}
+      `;
+      tb.appendChild(ctr);
+      if (!cOpen) return;
+
+      products.forEach(pm => {
+        const rs = recStates[pm.id];
+        const utr = document.createElement('tr');
+        utr.className = 'row-unit' + (rs?.state === 'accepted' ? ' row-accepted' : rs?.state === 'rejected' ? ' row-rejected' : rs?.state === 'overridden' ? ' row-overridden' : '');
+        const pmAlerts = computeAlerts(pm, alertCfg);
+        const isLocked = !!(pm.lock && pm.lock.locked);
+        const effRec = effectiveRec(pm);
+        const ov = priceOverrides[pm.id];
+        const hasOverride = !isLocked && ov && (ov.absChange != null || ov.pctChange != null);
+        const isInherited = ov?.inherited === true;
+        const hasBulkOverride = !isLocked && rs && rs.state === 'overridden';
+        const openFc = `openForecastModal({level:'pm',id:'${pm.id}'})`;
+        const lockIcon = `<svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="6.5" width="8" height="6" rx="1"/><path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/></svg>`;
+        let recCell;
+        if (isLocked) {
+          recCell = `<span class="rate-locked" title="Price guidance is locked${pm.lock.reason ? ' \u2014 ' + esc(pm.lock.reason) : ''}">${guidanceCellHtml(pm, effRec, '', openFc)}${lockIcon}</span>`;
+        } else if (hasOverride || hasBulkOverride) {
+          recCell = `<span style="background:rgba(232,0,125,0.08);border-radius:3px;padding:2px 4px;display:inline-block;text-align:right;">
+              ${guidanceCellHtml(pm, effRec, '', openFc)}
+              ${isInherited ? '<svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="var(--text-muted)" stroke-width="1.5" style="vertical-align:middle;margin-left:2px;"><path d="M5 9a3 3 0 0 0 4 0l2-2a3 3 0 0 0-4-4L6 4"/><path d="M9 5a3 3 0 0 0-4 0L3 7a3 3 0 0 0 4 4l1-1"/></svg>' : ''}
+              <span style="text-decoration:line-through;color:var(--text-muted);font-size:10.5px;display:block;">${fmtP(pm.rec, pm.sym)}</span>
+            </span>`;
+        } else {
+          recCell = guidanceCellHtml(pm, effRec, '', openFc);
+        }
+        utr.innerHTML = `
+          <td class="col-select"><input type="checkbox" class="row-select unit-select" data-id="${pm.id}" ${selectedUnits.has(pm.id) ? 'checked' : ''} aria-label="Select product-market"></td>
+          <td>${pm.product}<span style="font-size:10.5px;color:var(--text-muted);margin-left:6px;">${pm.spec} \u00b7 ${pm.id}</span></td>
+          <td><span class="avail-pct" style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();toggleExposureForProp('${pm.id}','${esc(country.name)} \u00b7 ${esc(pm.product)}','${region.id}','${country.id}','${pm.id}')">${pm.capUtil}%${pm.capUtil > alertCfg.capUtil.threshold ? ' <span class="warn-icon">\u26a0</span>' : ''}</span></td>
+          <td>${alertsCellHtml(pmAlerts)}</td>
+          <td>${intakeCellHtml(pm.intake, pm.planIntake, openFc)}</td>
+          <td>${momentumCell(pm.momentum)}</td>
+          <td>${signalBadge(pm.signal)}</td>
+          <td class="bench-cell">${benchCell(pm.feedinfo, pm.sym, pm.benchMove4w)}</td>
+          <td class="bench-cell">${fmtP(pm.boyar, pm.sym)}</td>
+          <td class="bench-cell">${fmtP(pm.varCost, pm.sym)}<span class="bench-move ${pm.costMove4w > 1 ? 'pace-neg' : 'pace-flat'}">${pm.costMove4w > 0 ? '+' : ''}${pm.costMove4w}%</span></td>
+          <td style="text-align:right;"><span onclick="openPriceHistory('${pm.id}')" title="View price history" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;">${fmtP(pm.price, pm.sym)}</span></td>
+          <td class="guidance-cell">${recCell}</td>
+          <td>${recActionChip(recActionFor(pm), recStateTag(pm.id) || (hasOverride ? '<span class="rec-state-tag t-overridden" title="Manual price change applied">OVR</span>' : ''), effectivePct(pm))}</td>
+          <td class="action-cell"><span class="action-cell-inner">
+            <button class="action-btn act-accept ${rs?.state === 'accepted' ? 'solid' : ''}" type="button" title="Accept guidance" onclick="event.stopPropagation();toggleAcceptUnit('${pm.id}')"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2.5,7.5 5.5,10.5 11.5,3.5"/></svg></button>
+            <button class="action-btn act-reject ${rs?.state === 'rejected' ? 'solid' : ''}" type="button" title="Reject guidance" onclick="event.stopPropagation();toggleRejectUnit('${pm.id}')"><svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3.5" y1="3.5" x2="10.5" y2="10.5"/><line x1="10.5" y1="3.5" x2="3.5" y2="10.5"/></svg></button>
+          </span></td>
+          ${dInputs(pm.id, 'pm', pm.sym)}
+          <td>${pmNotesCell(pm)}</td>
+          ${askBtn(`openRowCopilot('${pm.id}','${country.id}')`, 'Ask about this product-market')}
+        `;
+        tb.appendChild(utr);
+      });
+    });
+  });
+
+  syncBulkToolbar();
+}
+
+function toggleRegion(id) { if (expandedRegions.has(id)) expandedRegions.delete(id); else expandedRegions.add(id); renderTable(); }
+function toggleCountry(id) { expandedCountries[id] = !expandedCountries[id]; renderTable(); }
+
+// ── Generic modals ────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-backdrop').forEach(el => { el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }); });
+
+// ── Market profile modal ──────────────────────────────────
+function openCommAttrModal(countryId) {
+  const c = COUNTRIES.find(x => x.id === countryId);
+  if (!c) return;
+  document.getElementById('commAttrName').textContent = c.name + ' \u00b7 ' + c.regionName;
+  const facts = [
+    { label: 'Region', value: c.regionName },
+    { label: 'Currency', value: c.cur + '/t' },
+    { label: 'Planned volume', value: c.volume.toLocaleString('en-GB') + ' t/mo' },
+    { label: 'Pricing Manager', value: c.pm },
+    { label: 'Capacity utilization', value: c.capUtil + '%' },
+    { label: 'Market signal', value: signalLevelForScore(c.signal).label },
+  ];
+  document.getElementById('commAttrFacts').innerHTML = facts.map(f => `
+    <div style="background:var(--body-bg);border-radius:6px;border:1px solid var(--border);padding:8px 10px;">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">${f.label}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${f.value}</div>
+    </div>`).join('');
+  const chips = [
+    'Feedinfo ' + fmtP(c.feedinfo, c.sym) + '/t',
+    'Boyar ' + fmtP(c.boyar, c.sym) + '/t',
+    'Variable cost ' + fmtP(c.varCost, c.sym) + '/t',
+    'Demand momentum ' + (c.momentum > 0 ? '+' : '') + c.momentum + '%',
+    'Order intake ' + Math.round(c.intake / c.planIntake * 100) + '% of plan',
+  ];
+  document.getElementById('commAttrAmenities').innerHTML = chips.map(a => `
+    <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(232,0,125,0.07);color:var(--accent);border:1px solid rgba(232,0,125,0.2);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:500;">${a}</span>`).join('');
+  openModal('commAttrModal');
+}
+</script>
+
+<script>
+// ── Market Price Forecast Modal ───────────────────────────
+const bcBackdrop = document.getElementById('bcBackdrop');
+let activeFc = null;   // { level, region, country?, pm? }
+
+function fmtInt(n) { return Math.round(n).toLocaleString('en-GB'); }
+
+function openForecastModal(opts) {
+  let region = null, country = null, pm = null;
+  if (opts.level === 'pm') {
+    const f = findProductMarket(opts.id);
+    if (!f) return;
+    region = f.region; country = f.country; pm = f.pm;
+  } else if (opts.level === 'country') {
+    country = COUNTRIES.find(c => c.id === opts.countryId);
+    if (!country) return;
+    region = PRICING_DATA.find(r => r.id === country.region);
+  } else {
+    region = PRICING_DATA.find(r => r.id === opts.regionId);
+    if (!region) return;
+  }
+  activeFc = { level: opts.level, region, country, pm };
+  renderFcModal();
+  bcBackdrop.classList.add('is-open');
+  bcBackdrop.setAttribute('aria-hidden', 'false');
+  document.addEventListener('keydown', onBcKey);
+}
+function closeBcModal() {
+  activeFc = null;
+  bcBackdrop.classList.remove('is-open');
+  bcBackdrop.setAttribute('aria-hidden', 'true');
+  document.removeEventListener('keydown', onBcKey);
+}
+function onBcKey(e) { if (e.key === 'Escape') { e.stopPropagation(); closeBcModal(); } }
+bcBackdrop.addEventListener('click', e => { if (e.target === bcBackdrop) closeBcModal(); });
+
+// Aggregate forecast series: volume-weighted average of the children's series.
+function fcDataFor(level, region, country, pm) {
+  if (level === 'pm') return marketForecastData(pm.id, pm);
+  const list = level === 'country' ? country.products : region.countries.flatMap(c => c.products);
+  const parts = list.map(p => ({ w: p.volume, d: marketForecastData(p.id, p) }));
+  const W = parts.reduce((s, x) => s + x.w, 0) || 1;
+  const wavg = key => parts[0].d[key].map((_, i) => Math.round(parts.reduce((s, x) => s + x.d[key][i] * x.w, 0) / W));
+  const sum = key => parts[0].d[key].map((_, i) => parts.reduce((s, x) => s + x.d[key][i], 0));
+  return {
+    H: parts[0].d.H, F: parts[0].d.F, labels: parts[0].d.labels, weekLabels: parts[0].d.weekLabels,
+    feedinfo: wavg('feedinfo'), boyar: wavg('boyar'), price: wavg('price'),
+    fcMid: wavg('fcMid'), fcLow: wavg('fcLow'), fcHigh: wavg('fcHigh'),
+    intakeAct: sum('intakeAct'), intakePlan: sum('intakePlan'),
+  };
+}
+
+// ── SVG: market price history + forecast with corridor ──
+function forecastSvg(d, sym) {
+  const W = 560, H = 220;
+  const padL = 46, padR = 12, padT = 14, padB = 26;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const N = d.H + d.F;
+  const all = [...d.feedinfo, ...d.boyar, ...d.price, ...d.fcLow, ...d.fcHigh];
+  const minY = Math.min(...all) * 0.985, maxY = Math.max(...all) * 1.015;
+  const xAt = i => padL + innerW * i / (N - 1);
+  const yAt = v => padT + innerH * (1 - (v - minY) / (maxY - minY));
+  const path = (arr, off) => arr.map((v, i) => (i === 0 ? 'M' : 'L') + xAt(i + off) + ',' + yAt(v)).join(' ');
+
+  const ticks = 4;
+  const tickLines = Array.from({ length: ticks + 1 }, (_, i) => {
+    const y = padT + innerH * i / ticks;
+    const v = Math.round(maxY - (maxY - minY) * i / ticks);
+    return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="#eef0f5" stroke-width="1"/>' +
+           '<text x="' + (padL - 6) + '" y="' + (y + 3) + '" font-size="9" fill="#9ca3af" text-anchor="end" font-family="Inter">' + sym + v.toLocaleString('en-GB') + '</text>';
+  }).join('');
+  const xLabels = d.labels.map((l, i) => {
+    if (i !== d.H - 1 && i !== N - 1 && (i % 4 !== 0 || Math.abs(i - (d.H - 1)) < 3 || N - 1 - i < 2)) return '';
+    const txt = l.offset === 0 ? 'today' : (l.offset > 0 ? 'W+' + l.offset : 'W\u2212' + (-l.offset));
+    return '<text x="' + xAt(i) + '" y="' + (H - 8) + '" font-size="9" fill="' + (l.offset === 0 ? '#1a1d23' : '#9ca3af') + '" text-anchor="middle" font-family="Inter"' + (l.offset === 0 ? ' font-weight="600"' : '') + '>' + txt + '</text>';
+  }).join('');
+
+  // Forecast band polygon (from today's blended point outward)
+  const todayX = xAt(d.H - 1);
+  const startMid = Math.round((d.feedinfo[d.H - 1] * 0.6 + d.boyar[d.H - 1] * 0.4));
+  const bandTop = [[todayX, yAt(startMid)], ...d.fcHigh.map((v, k) => [xAt(d.H + k), yAt(v)])];
+  const bandBot = d.fcLow.map((v, k) => [xAt(d.H + k), yAt(v)]).reverse();
+  const band = 'M' + [...bandTop, ...bandBot, [todayX, yAt(startMid)]].map(p => p.join(',')).join(' L') + ' Z';
+  const fcPath = 'M' + todayX + ',' + yAt(startMid) + ' ' + d.fcMid.map((v, k) => 'L' + xAt(d.H + k) + ',' + yAt(v)).join(' ');
+
+  return (
+    '<svg class="chart-fc" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" ' +
+      'data-w="' + W + '" data-h="' + H + '" data-padl="' + padL + '" data-padr="' + padR + '" data-padt="' + padT + '" data-padb="' + padB + '" data-miny="' + minY + '" data-maxy="' + maxY + '">' +
+      tickLines +
+      '<rect x="' + todayX + '" y="' + padT + '" width="' + (W - padR - todayX) + '" height="' + innerH + '" fill="rgba(148,163,184,0.06)"/>' +
+      '<path d="' + band + '" fill="rgba(232,0,125,0.12)" stroke="none"/>' +
+      '<path d="' + path(d.boyar, 0) + '" stroke="#60a5fa" stroke-width="1.5" fill="none"/>' +
+      '<path d="' + path(d.feedinfo, 0) + '" stroke="#6b7280" stroke-width="1.5" fill="none"/>' +
+      '<path d="' + path(d.price, 0) + '" stroke="#e8007d" stroke-width="2.2" fill="none"/>' +
+      '<path d="' + fcPath + '" stroke="#e8007d" stroke-width="2" stroke-dasharray="5 4" fill="none"/>' +
+      '<line x1="' + todayX + '" y1="' + padT + '" x2="' + todayX + '" y2="' + (H - padB) + '" stroke="#1a1d23" stroke-width="1" stroke-dasharray="2 2"/>' +
+      xLabels +
+      '<line class="chart-guide" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" stroke="rgba(232,0,125,0.5)" stroke-width="1" style="display:none"/>' +
+      '<g class="chart-markers" style="display:none">' +
+        '<circle r="4" fill="#6b7280" stroke="#fff" stroke-width="1.5"/>' +
+        '<circle r="4" fill="#60a5fa" stroke="#fff" stroke-width="1.5"/>' +
+        '<circle r="4" fill="#e8007d" stroke="#fff" stroke-width="1.5"/>' +
+      '</g>' +
+    '</svg>'
+  );
+}
+
+function wireForecastTooltip(svg, d, sym) {
+  if (!svg) return;
+  const container = svg.parentElement;
+  const ds = svg.dataset;
+  const W = +ds.w, H = +ds.h, padL = +ds.padl, padR = +ds.padr, padT = +ds.padt, padB = +ds.padb;
+  const minY = +ds.miny, maxY = +ds.maxy;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const N = d.H + d.F;
+  const yAt = v => padT + innerH * (1 - (v - minY) / (maxY - minY));
+  const guide = svg.querySelector('.chart-guide');
+  const markersG = svg.querySelector('.chart-markers');
+  const markers = [...markersG.querySelectorAll('circle')];
+  const tip = document.createElement('div'); tip.className = 'chart-tooltip'; container.appendChild(tip);
+  function hide() { guide.style.display = 'none'; markersG.style.display = 'none'; tip.style.display = 'none'; }
+  function onMove(e) {
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0) return hide();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    const sx = px * (W / rect.width), sy = py * (H / rect.height);
+    if (sx < padL || sx > W - padR || sy < padT || sy > H - padB) return hide();
+    const i = Math.max(0, Math.min(N - 1, Math.round((sx - padL) / innerW * (N - 1))));
+    const snapX = padL + innerW * i / (N - 1);
+    guide.setAttribute('x1', snapX); guide.setAttribute('x2', snapX); guide.style.display = '';
+    const l = d.labels[i];
+    const header = l.offset === 0 ? 'This week' : (l.offset > 0 ? 'Forecast W+' + l.offset : 'W\u2212' + (-l.offset)) + ' \u00b7 ' + l.short;
+    let rows;
+    if (i < d.H) {
+      const series = [
+        { name: 'Feedinfo', color: '#6b7280', value: d.feedinfo[i] },
+        { name: 'Boyar', color: '#60a5fa', value: d.boyar[i] },
+        { name: 'Adisseo price', color: '#e8007d', value: d.price[i] },
+      ];
+      series.forEach((s, idx) => { markers[idx].setAttribute('cx', snapX); markers[idx].setAttribute('cy', yAt(s.value)); markers[idx].style.display = ''; });
+      rows = series.map(s => '<div class="chart-tooltip-row"><span class="swatch" style="background:' + s.color + '"></span><span class="label">' + s.name + '</span><span class="value">' + sym + s.value.toLocaleString('en-GB') + '</span></div>').join('');
+    } else {
+      const k = i - d.H;
+      markers.forEach(m => m.style.display = 'none');
+      markers[2].setAttribute('cx', snapX); markers[2].setAttribute('cy', yAt(d.fcMid[k])); markers[2].style.display = '';
+      rows =
+        '<div class="chart-tooltip-row"><span class="swatch" style="background:#e8007d"></span><span class="label">Forecast market price</span><span class="value">' + sym + d.fcMid[k].toLocaleString('en-GB') + '</span></div>' +
+        '<div class="chart-tooltip-row"><span class="swatch" style="background:rgba(232,0,125,0.35)"></span><span class="label">Expected range</span><span class="value">' + sym + d.fcLow[k].toLocaleString('en-GB') + '\u2013' + sym + d.fcHigh[k].toLocaleString('en-GB') + '</span></div>';
+    }
+    markersG.style.display = '';
+    tip.innerHTML = '<div class="chart-tooltip-header">' + header + '</div>' + rows;
+    tip.style.display = 'block';
+    const tipW = tip.offsetWidth || 160;
+    let left = px + 14;
+    if (left + tipW > rect.width - 4) left = px - tipW - 14;
+    tip.style.left = left + 'px';
+    tip.style.top = Math.max(2, py - 20) + 'px';
+  }
+  container.addEventListener('mousemove', onMove);
+  container.addEventListener('mouseleave', hide);
+}
+
+// ── SVG: weekly order intake vs plan ──
+function intakeBarsSvg(values, labels, plans) {
+  const W = 560, H = 160;
+  const padL = 46, padR = 12, padT = 14, padB = 30;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const N = values.length;
+  const maxV = Math.max(...values, ...plans, 1);
+  const gap = 8, bw = (innerW - gap * (N - 1)) / N;
+  const ticks = 4;
+  const tickLines = Array.from({ length: ticks + 1 }, (_, i) => {
+    const y = padT + innerH * i / ticks;
+    const v = Math.round(maxV * (1 - i / ticks));
+    return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="#eef0f5" stroke-width="1"/>' +
+           '<text x="' + (padL - 6) + '" y="' + (y + 3) + '" font-size="9" fill="#9ca3af" text-anchor="end" font-family="Inter">' + v.toLocaleString('en-GB') + '</text>';
+  }).join('');
+  const bars = values.map((v, i) => {
+    const x = padL + i * (bw + gap);
+    const h = innerH * v / maxV, y = padT + innerH - h;
+    const b = plans[i], benchY = padT + innerH * (1 - b / maxV);
+    const tickColor = b <= v ? '#2563eb' : '#dc2626';
+    return '<rect class="bar" data-i="' + i + '" x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" rx="2" fill="#e8007d" fill-opacity="0.85"/>' +
+      '<line x1="' + (x - 3) + '" y1="' + benchY + '" x2="' + (x + bw + 3) + '" y2="' + benchY + '" stroke="' + tickColor + '" stroke-width="2" stroke-linecap="round"/>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (H - 14) + '" font-size="9" fill="#1a1d23" text-anchor="middle" font-family="Inter" font-weight="500">' + labels[i].num + '</text>';
+  }).join('');
+  return '<svg class="chart-weekly" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + tickLines + bars + '</svg>';
+}
+function wireWeeklyTooltip(svg, d) {
+  if (!svg) return;
+  const container = svg.parentElement;
+  const tip = document.createElement('div'); tip.className = 'chart-tooltip'; container.appendChild(tip);
+  const bars = [...svg.querySelectorAll('rect.bar')];
+  function hide() { tip.style.display = 'none'; bars.forEach(b => b.setAttribute('fill-opacity', '0.85')); }
+  function show(i, e) {
+    const rect = container.getBoundingClientRect();
+    const px = e.clientX - rect.left, py = e.clientY - rect.top;
+    bars.forEach((b, j) => b.setAttribute('fill-opacity', j === i ? '1' : '0.5'));
+    const v = d.intakeAct[i], b = d.intakePlan[i];
+    const delta = b > 0 ? Math.round((v - b) / b * 1000) / 10 : 0;
+    tip.innerHTML = '<div class="chart-tooltip-header">Week of ' + d.weekLabels[i].num + '</div>' +
+      '<div class="chart-tooltip-row"><span class="swatch" style="background:#e8007d"></span><span class="label">Order intake</span><span class="value">' + v.toLocaleString('en-GB') + ' t</span></div>' +
+      '<div class="chart-tooltip-row"><span class="swatch" style="background:' + (b <= v ? '#2563eb' : '#dc2626') + '"></span><span class="label">Plan</span><span class="value">' + b.toLocaleString('en-GB') + ' t</span></div>' +
+      '<div class="chart-tooltip-row"><span class="swatch" style="background:transparent"></span><span class="label">Delta</span><span class="value" style="color:' + (delta >= 0 ? '#86efac' : '#fca5a5') + '">' + (delta > 0 ? '+' : '') + delta + '%</span></div>';
+    tip.style.display = 'block';
+    const tipR = tip.getBoundingClientRect();
+    let tx = px + 12, ty = py + 12;
+    if (tx + tipR.width > rect.width) tx = px - tipR.width - 12;
+    if (ty + tipR.height > rect.height) ty = py - tipR.height - 12;
+    tip.style.left = Math.max(0, tx) + 'px'; tip.style.top = Math.max(0, ty) + 'px';
+  }
+  bars.forEach((b, i) => { b.addEventListener('mousemove', e => show(i, e)); b.addEventListener('mouseleave', hide); });
+  container.addEventListener('mouseleave', hide);
+}
+
+function renderFcModal() {
+  if (!activeFc) return;
+  const { level, region, country, pm } = activeFc;
+  const sym = region.sym;
+  const d = fcDataFor(level, region, country, pm);
+  const m = level === 'pm' ? pm : (level === 'country' ? country : region);
+  const list = level === 'pm' ? [pm] : (level === 'country' ? country.products : region.countries.flatMap(c => c.products));
+
+  let title, subtitle;
+  if (level === 'pm') { title = esc(country.name) + ' \u2014 ' + esc(pm.product); subtitle = esc(pm.spec) + ' \u00b7 ' + esc(region.name) + ' \u00b7 ' + esc(pm.id) + ' \u00b7 prices in ' + region.cur + '/t'; }
+  else if (level === 'country') { title = esc(country.name); subtitle = country.products.length + ' products \u00b7 volume-weighted \u00b7 ' + region.cur + '/t'; }
+  else { title = esc(region.name); subtitle = region.countries.length + ' markets \u00b7 volume-weighted \u00b7 ' + region.cur + '/t'; }
+
+  const signal = signalLevelForScore(m.signal);
+  const sigColor = { 5: '#14532d', 4: '#166534', 3: '#64748b', 2: '#1d4ed8', 1: '#1e3a8a' }[signal.level];
+  const alerts = level === 'pm' ? computeAlerts(pm, alertCfg) : unionAlerts(computeAlerts(m, alertCfg), list, alertCfg);
+  const alertsHtml = alerts.length
+    ? alerts.map(a => '<div class="bc-alert-item"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#f5a623" stroke-width="1.5" style="flex-shrink:0;margin-top:1px;">' + (alertConfig[a.type]?.icon || '') + '</svg><span><strong>' + esc(a.label) + '.</strong> ' + esc(a.tooltip) + '</span></div>').join('')
+    : '<div style="font-size:12px;color:var(--text-muted);">No active alerts.</div>';
+
+  // Price guidance panel (leaf: full corridor + explanation; aggregate: read-only)
+  let guidanceHtml;
+  if (level === 'pm') {
+    const effRec = effectiveRec(pm);
+    const lo = pm.corridorLow + (effRec - pm.rec), hi = pm.corridorHigh + (effRec - pm.rec);
+    const pct = effectivePct(pm);
+    const pctClass = pct > 0.5 ? 'cell-pos' : pct < -0.5 ? 'cell-neg' : '';
+    const span = [Math.min(lo, pm.price, pm.fcst8w) * 0.985, Math.max(hi, pm.price, pm.fcst8w) * 1.015];
+    const pos = v => Math.round((v - span[0]) / (span[1] - span[0]) * 1000) / 10;
+    const drivers = guidanceDrivers(pm);
+    const rs = recStates[pm.id] || {};
+    const stateTag = rs.state === 'accepted' ? '<span class="rec-state-tag t-accepted">Accepted</span>' : rs.state === 'rejected' ? '<span class="rec-state-tag t-rejected">Rejected</span>' : rs.state === 'overridden' ? '<span class="rec-state-tag t-overridden">Overridden</span>' : '';
+    guidanceHtml =
+      '<div class="bc-panel">' +
+        '<div class="bc-panel-title">Price guidance' + stateTag + '</div>' +
+        (pm.lock?.locked ? '<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px;">\ud83d\udd12 Locked' + (pm.lock.reason ? ' \u2014 ' + esc(pm.lock.reason) : '') + '</div>' : '') +
+        '<div class="bc-rec-row"><span class="label">Current price</span><span class="value">' + fmtP(pm.price, sym) + '/t</span></div>' +
+        '<div class="bc-rec-row"><span class="label">Market price forecast (8 wk)</span><span class="value">' + fmtP(pm.fcst8w, sym) + '/t</span></div>' +
+        '<div class="bc-rec-row"><span class="label">Recommended corridor</span><span class="value">' + fmtP(lo, sym) + ' \u2013 ' + fmtP(hi, sym) + '</span></div>' +
+        '<div class="bc-rec-row"><span class="label">Recommended price</span><span class="value">' + fmtP(effRec, sym) + '/t</span></div>' +
+        '<div class="bc-rec-row"><span class="label">% change</span><span class="value pct ' + pctClass + '">' + (pct > 0 ? '+' : '') + pct + '%</span></div>' +
+        '<div class="bc-corridor-bar">' +
+          '<div class="band" style="left:' + pos(lo) + '%;width:' + (pos(hi) - pos(lo)) + '%;"></div>' +
+          '<div class="mark" style="left:' + pos(pm.price) + '%;background:#1a1d23;" title="Current price"></div>' +
+          '<div class="mark" style="left:' + pos(effRec) + '%;background:#e8007d;" title="Recommended"></div>' +
+          '<div class="mark" style="left:' + pos(pm.fcst8w) + '%;background:#6b7280;height:10px;top:-1px;" title="Forecast"></div>' +
+        '</div>' +
+        '<div class="bc-corridor-labels"><span>\u25a0 current &nbsp; <span style="color:#e8007d">\u25a0</span> recommended &nbsp; <span style="color:#6b7280">\u25a0</span> forecast</span><span>corridor shaded</span></div>' +
+      '</div>' +
+      '<div class="bc-panel">' +
+        '<div class="bc-panel-title">Why this guidance</div>' +
+        '<ul class="bc-drivers">' + drivers.map(dr => '<li><span class="dir ' + dr.dir + '">' + (dr.dir === 'up' ? '\u2191' : dr.dir === 'down' ? '\u2193' : '\u2013') + '</span><span>' + esc(dr.text) + '</span></li>').join('') + '</ul>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Accept, reject or override this guidance from the cockpit row, then Commit.</div>' +
+      '</div>';
+  } else {
+    guidanceHtml =
+      '<div class="bc-panel">' +
+        '<div class="bc-panel-title">Price guidance</div>' +
+        '<div class="bc-rec-row"><span class="label">Volume-weighted current price</span><span class="value">' + fmtP(m.price, sym) + '/t</span></div>' +
+        '<div class="bc-rec-row"><span class="label">Volume-weighted guidance</span><span class="value">' + fmtP(m.rec, sym) + '/t</span></div>' +
+        '<div style="color:var(--text-muted);font-size:12px;margin-top:6px;">Aggregate view \u2014 corridors and explanations are per product-market. Expand the row to review each one.</div>' +
+      '</div>';
+  }
+
+  const intakePct = m.planIntake ? Math.round(m.intake / m.planIntake * 100) : 0;
+  const html =
+    '<div class="bc-modal" role="dialog" aria-modal="true">' +
+      '<header class="bc-header"><div><div class="bc-title">' + title + '</div><div class="bc-subtitle">' + subtitle + '</div></div>' +
+        '<button class="bc-close" type="button" id="bcCloseBtn" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg></button>' +
+      '</header>' +
+      '<div class="bc-body">' +
+        '<div class="bc-col">' +
+          '<div class="bc-panel">' +
+            '<div class="bc-panel-title">Market price forecast \u00b7 26 weeks history + 8 weeks ahead</div>' +
+            '<div class="bc-legend">' +
+              '<span><span class="line" style="border-color:#6b7280"></span>Feedinfo</span>' +
+              '<span><span class="line" style="border-color:#60a5fa"></span>Boyar</span>' +
+              '<span><span class="line" style="border-color:#e8007d"></span>Adisseo price</span>' +
+              '<span><span class="line" style="border-color:#e8007d;border-top-style:dashed"></span>Forecast</span>' +
+              '<span><span class="swatch" style="background:rgba(232,0,125,0.18)"></span>Expected range</span>' +
+            '</div>' +
+            '<div class="bc-chart-area">' + forecastSvg(d, sym) + '</div>' +
+          '</div>' +
+          '<div class="bc-panel">' +
+            '<div class="bc-panel-title">Order intake \u00b7 last 8 weeks vs plan (t)</div>' +
+            '<div class="bc-legend"><span><span class="swatch" style="background:#e8007d"></span>Order intake</span><span><span class="bc-legend-tick"></span>Plan (above/below)</span></div>' +
+            '<div class="bc-chart-area">' + intakeBarsSvg(d.intakeAct, d.weekLabels, d.intakePlan) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="bc-col">' +
+          '<div class="bc-panel">' +
+            '<div class="bc-panel-title">Market signal</div>' +
+            '<div class="bc-dl-big"><span class="bc-dl-code" style="color:' + sigColor + '">' + esc(signal.short) + '</span><span class="bc-dl-text"><strong>' + esc(signal.label) + '.</strong> ' + esc(signal.interp) + '</span></div>' +
+          '</div>' +
+          '<div class="bc-panel">' +
+            '<div class="bc-panel-title">Key indicators</div>' +
+            '<table class="bc-compare">' +
+              '<thead><tr><th></th><th>Now</th><th>4-wk move</th><th>Last yr</th></tr></thead><tbody>' +
+                '<tr><td>Feedinfo</td><td>' + fmtP(m.feedinfo, sym) + '</td><td>' + fmtPct(m.benchMove4w) + '</td><td>' + fmtP(Math.round(m.feedinfo / (1 + m.benchMove4w / 100 * 2.5)), sym) + '</td></tr>' +
+                '<tr><td>Boyar</td><td>' + fmtP(m.boyar, sym) + '</td><td>' + fmtPct(Math.round((m.benchMove4w - 0.3) * 10) / 10) + '</td><td>' + fmtP(Math.round(m.boyar / (1 + m.benchMove4w / 100 * 2.5)), sym) + '</td></tr>' +
+                '<tr><td>Adisseo price</td><td>' + fmtP(m.price, sym) + '</td><td>\u2014</td><td>' + fmtP(m.lastYearPrice, sym) + '</td></tr>' +
+                '<tr><td>Variable cost</td><td>' + fmtP(m.varCost, sym) + '</td><td>' + fmtPct(m.costMove4w) + '</td><td>' + fmtP(Math.round(m.varCost * 0.96), sym) + '</td></tr>' +
+                '<tr><td>Capacity utilization</td><td>' + m.capUtil + '%</td><td>\u2014</td><td>' + Math.max(55, m.capUtil - 6) + '%</td></tr>' +
+                '<tr><td>Order intake vs plan</td><td>' + intakePct + '%</td><td>' + fmtPct(m.momentum) + '</td><td>\u2014</td></tr>' +
+              '</tbody></table>' +
+          '</div>' +
+          guidanceHtml +
+          '<div class="bc-panel"><div class="bc-panel-title">Alerts</div><div class="bc-alert-list">' + alertsHtml + '</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  bcBackdrop.innerHTML = html;
+  document.getElementById('bcCloseBtn').addEventListener('click', closeBcModal);
+  wireForecastTooltip(bcBackdrop.querySelector('.chart-fc'), d, sym);
+  wireWeeklyTooltip(bcBackdrop.querySelector('.chart-weekly'), d);
+}
+</script>
+
+<script>
+// ── Capacity Utilization & Market Price panel ─────────────
+let _panelCtx = null;
+
+function toggleExposureForProp(key, label, regionId, countryId, pmId) {
+  if (exposureOpen && !document.getElementById('exposurePanel').classList.contains('panel-closed') && exposurePropId === key) {
+    toggleExposure(); exposurePropId = null; return;
+  }
+  if (unitPricingOpen) toggleUnitPricing();
+  document.getElementById('exposurePropName').textContent = label;
+  exposurePropId = key;
+  const region = PRICING_DATA.find(r => r.id === regionId);
+  const country = countryId ? COUNTRIES.find(c => c.id === countryId) : null;
+  const pm = pmId ? findPM(pmId) : null;
+  _panelCtx = { m: pm || country || region, sym: region.sym, cur: region.cur };
+  document.getElementById('compChartUnit').textContent = region.cur + '/t';
+
+  if (window.exposureChartInst) { window.exposureChartInst.destroy(); window.exposureChartInst = null; }
+  if (window.compChartInst) { window.compChartInst.destroy(); window.compChartInst = null; }
+  const panel = document.getElementById('exposurePanel');
+  const wasOpen = exposureOpen && !panel.classList.contains('panel-closed');
+  if (!exposureOpen) toggleExposure();
+  else { panel.classList.remove('panel-closed'); document.getElementById('exposureWrap').classList.remove('panel-closed'); }
+  function createCharts() {
+    try {
+      renderCharts();
+      if (window.exposureChartInst) window.exposureChartInst.resize();
+      if (window.compChartInst) window.compChartInst.resize();
+      setTimeout(() => { if (window.exposureChartInst) window.exposureChartInst.resize(); if (window.compChartInst) window.compChartInst.resize(); }, 150);
+    } catch (err) { console.error('Panel chart render failed:', err); }
+  }
+  if (wasOpen) createCharts(); else setTimeout(createCharts, 350);
+  updatePanelState();
+}
+(function initResizeObservers() {
+  const a = document.getElementById('exposureChartWrap'), b = document.getElementById('compChartWrap');
+  if (!a || !b) return;
+  const ro = new ResizeObserver(entries => {
+    try {
+      for (const e of entries) {
+        if (e.contentRect.height < 50) continue;
+        if (e.target === a && window.exposureChartInst) window.exposureChartInst.resize();
+        if (e.target === b && window.compChartInst) window.compChartInst.resize();
+      }
+    } catch (_) {}
+  });
+  ro.observe(a); ro.observe(b);
+})();
+function toggleExposure() {
+  const wrap = document.getElementById('exposureWrap'), panel = document.getElementById('exposurePanel');
+  if (!exposureOpen) { exposureOpen = true; wrap.style.display = ''; panel.classList.remove('panel-closed'); wrap.classList.remove('panel-closed'); }
+  else { exposureOpen = false; panel.classList.add('panel-closed'); wrap.classList.add('panel-closed'); setTimeout(() => { if (!exposureOpen) wrap.style.display = 'none'; }, 300); }
+  updatePanelState();
+}
+
+function renderCharts() {
+  const { m, sym } = _panelCtx;
+  const labels = CHART_MONTHS, n = labels.length;
+  const r = rngFor('panel|' + exposurePropId);
+
+  // Capacity utilization: 12 months, ending at today's value
+  const cap = new Array(n);
+  cap[n - 1] = m.capUtil;
+  for (let i = n - 2; i >= 0; i--) cap[i] = Math.max(55, Math.min(99, cap[i + 1] - (m.capUtil - 84) / n + rpick(r, -2.5, 2.5)));
+
+  // Benchmarks + Adisseo price + variable cost, ending at today's values
+  const fi = new Array(n), by = new Array(n), pr = new Array(n), vc = new Array(n);
+  fi[n - 1] = m.feedinfo; by[n - 1] = m.boyar; pr[n - 1] = m.price; vc[n - 1] = m.varCost;
+  const drift = (m.benchMove4w / 100) / 4 * 4.3;    // monthly
+  for (let i = n - 2; i >= 0; i--) {
+    const dm = i >= n - 3 ? drift : drift * 0.3 + rpick(r, -0.012, 0.012);
+    fi[i] = fi[i + 1] / (1 + dm + rpick(r, -0.006, 0.006));
+    by[i] = fi[i] * (m.boyar / m.feedinfo) * (1 + rpick(r, -0.004, 0.004));
+    vc[i] = vc[i + 1] / (1 + (m.costMove4w / 100) * 0.3 + rpick(r, -0.005, 0.005));
+    pr[i] = (i + 1) % 3 === 0 ? Math.round((pr[i + 1] * 0.6 + fi[i] * 0.4) / 5) * 5 : pr[i + 1];
+  }
+
+  const darkTooltip = {
+    mode: 'index', intersect: false, backgroundColor: '#1e2028', borderColor: '#3d4150', borderWidth: 1,
+    titleColor: '#e5e7eb', bodyColor: '#9ca3af', padding: 10,
+    titleFont: { family: 'Inter', size: 12, weight: '600' }, bodyFont: { family: 'Inter', size: 11 },
+    callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + (ctx.chart.canvas.id === 'exposureChart' ? ctx.parsed.y.toFixed(1) + '%' : sym + Math.round(ctx.parsed.y).toLocaleString('en-GB') + '/t') },
+  };
+  const xTickOpts = { display: true, color: '#9ca3af', font: { family: 'Inter', size: 9 }, maxRotation: 0, maxTicksLimit: 12, autoSkip: true };
+  const yTickOpts = { color: '#9ca3af', font: { family: 'Inter', size: 9 } };
+  const gridColor = 'rgba(255,255,255,0.06)';
+
+  if (exposureChartInst) exposureChartInst.destroy();
+  exposureChartInst = new Chart(document.getElementById('exposureChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Capacity utilization', data: cap.map(v => +v.toFixed(1)), borderColor: '#f5a623', backgroundColor: 'rgba(245,166,35,0.18)', borderWidth: 2, fill: true, tension: 0.3, pointRadius: 0 },
+      { label: 'Alert threshold', data: labels.map(() => alertCfg.capUtil.threshold), borderColor: 'rgba(220,38,38,0.7)', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { tooltip: darkTooltip, legend: { display: false } },
+      scales: { x: { display: true, ticks: xTickOpts, grid: { color: gridColor } }, y: { display: true, min: 50, max: 100, ticks: { ...yTickOpts, callback: v => v + '%' }, grid: { color: gridColor } } } },
+  });
+
+  if (compChartInst) compChartInst.destroy();
+  compChartInst = new Chart(document.getElementById('compChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Feedinfo', data: fi.map(Math.round), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.25, fill: false },
+      { label: 'Boyar', data: by.map(Math.round), borderColor: '#60a5fa', borderWidth: 1.5, pointRadius: 0, tension: 0.25, fill: false },
+      { label: 'Adisseo price', data: pr.map(Math.round), borderColor: '#e8007d', borderWidth: 2, pointRadius: 0, stepped: true, fill: false },
+      { label: 'Variable cost', data: vc.map(Math.round), borderColor: 'rgba(148,163,184,0.6)', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.25, fill: false },
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { tooltip: darkTooltip, legend: { display: false } },
+      scales: { x: { display: true, ticks: xTickOpts, grid: { color: gridColor } }, y: { display: true, ticks: { ...yTickOpts, callback: v => sym + v.toLocaleString('en-GB') }, grid: { color: gridColor } } } },
+  });
+}
+
+// ── Price History Panel ───────────────────────────────────
+function updatePanelState() { document.getElementById('panelsContainer').classList.toggle('both-open', exposureOpen && unitPricingOpen); }
+function toggleUnitPricing() {
+  const wrap = document.getElementById('unitPricingWrap'), panel = document.getElementById('unitPricingPanel');
+  if (unitPricingOpen) {
+    unitPricingOpen = false; panel.classList.add('panel-closed'); wrap.classList.add('panel-closed');
+    setTimeout(() => { if (!unitPricingOpen) wrap.style.display = 'none'; }, 300);
+    if (unitPricingChartInst) { unitPricingChartInst.destroy(); unitPricingChartInst = null; }
+  } else { unitPricingOpen = true; wrap.style.display = ''; panel.classList.remove('panel-closed'); wrap.classList.remove('panel-closed'); }
+  updatePanelState();
+}
+function openPriceHistory(id) {
+  const f = findProductMarket(id);
+  if (!f) return;
+  const pm = f.pm, sym = pm.sym;
+  if (exposureOpen) toggleExposure();
+  document.getElementById('unitPricingUnitId').textContent = f.country.name + ' \u00b7 ' + pm.product + ' \u00b7 ' + pm.id;
+  const wrap = document.getElementById('unitPricingWrap'), panel = document.getElementById('unitPricingPanel');
+  wrap.style.display = ''; panel.classList.remove('panel-closed'); wrap.classList.remove('panel-closed');
+  unitPricingOpen = true; updatePanelState();
+
+  const d = marketForecastData(pm.id, pm);
+  const labels = d.labels.slice(0, d.H).map(l => l.short);
+  const list = d.price, feed = d.feedinfo;
+  const realized = list.map((v, i) => Math.round(v * (0.965 + Math.sin(i / 3) * 0.008)));
+  // Override markers = the weeks where the list price was re-set
+  const overrideIdx = list.map((v, i) => i > 0 && v !== list[i - 1] ? i : -1).filter(i => i >= 0);
+  const ptRadius = list.map((_, i) => overrideIdx.includes(i) ? 6 : 0);
+  const ptBg = list.map((_, i) => overrideIdx.includes(i) ? '#fbbf24' : '#e8007d');
+
+  if (unitPricingChartInst) unitPricingChartInst.destroy();
+  unitPricingChartInst = new Chart(document.getElementById('unitPricingChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'List price', data: list, borderColor: '#e8007d', borderWidth: 2, pointRadius: ptRadius, pointBackgroundColor: ptBg, pointBorderColor: 'transparent', pointHoverRadius: 5, stepped: true, fill: false },
+      { label: 'Realized net price', data: realized, borderColor: '#60a5fa', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.3, fill: false },
+      { label: 'Feedinfo', data: feed, borderColor: '#9ca3af', borderWidth: 1.2, borderDash: [2, 3], pointRadius: 0, tension: 0.3, fill: false },
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, backgroundColor: '#1e2028', borderColor: '#3d4150', borderWidth: 1, titleColor: '#e5e7eb', bodyColor: '#9ca3af', padding: 10,
+        titleFont: { family: 'Inter', size: 12, weight: '600' }, bodyFont: { family: 'Inter', size: 11 },
+        callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + sym + Math.round(ctx.parsed.y).toLocaleString('en-GB') + '/t' + (ctx.datasetIndex === 0 && overrideIdx.includes(ctx.dataIndex) ? '  \u26a1 Price reset' : '') } } },
+      scales: { x: { display: true, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 9 }, maxTicksLimit: 10, maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                y: { display: true, ticks: { color: '#9ca3af', font: { family: 'Inter', size: 9 }, callback: v => sym + v.toLocaleString('en-GB') }, grid: { color: 'rgba(255,255,255,0.06)' } } } },
+  });
+}
+
+// ── Note Modal ───────────────────────────────────────────
+let noteModalId = null, noteExpiryDate = null;
+function openNoteModal(id, existingNote) {
+  noteModalId = id;
+  document.getElementById('noteModalUnit').textContent = id;
+  const ta = document.getElementById('noteTextarea');
+  if (existingNote) { ta.value = existingNote.text; noteExpiryDate = existingNote.expires; document.getElementById('noteExpiryLabel').textContent = existingNote.expires; }
+  else { ta.value = ''; noteExpiryDate = null; document.getElementById('noteExpiryLabel').textContent = 'Select date'; }
+  openModal('noteModal');
+}
+function saveNote() {
+  const text = document.getElementById('noteTextarea').value.trim();
+  const noteObj = text ? { text, expires: noteExpiryDate || '' } : null;
+  for (const region of PRICING_DATA) for (const c of region.countries) {
+    if (c.id === noteModalId) { c.note = noteObj; break; }
+    for (const p of c.products) if (p.id === noteModalId) { p.note = noteObj; break; }
+  }
+  closeModal('noteModal');
+  renderTable();
+}
+
+// ── Calendar Date Picker ──────────────────────────────────
+let calTarget = null, calYear = new Date().getFullYear(), calMonth = new Date().getMonth();
+function openCalendar(target, btnEl) {
+  calTarget = target;
+  const cal = document.getElementById('calendarModal'), rect = btnEl.getBoundingClientRect();
+  cal.style.left = rect.left + 'px'; cal.style.top = (rect.bottom + 6) + 'px';
+  renderCalendar(); cal.classList.add('open');
+}
+function closeCalendar() { document.getElementById('calendarModal').classList.remove('open'); calTarget = null; }
+function calNav(dir) { calMonth += dir; if (calMonth > 11) { calMonth = 0; calYear++; } if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
+function renderCalendar() {
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = monthNames[calMonth] + ' ' + calYear;
+  const firstDay = new Date(calYear, calMonth, 1).getDay(), daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date(), todayStr = today.getFullYear() + '-' + today.getMonth() + '-' + today.getDate();
+  let html = '';
+  for (let i = 0; i < firstDay; i++) html += '<button class="empty"></button>';
+  for (let d = 1; d <= daysInMonth; d++) html += `<button class="${(calYear + '-' + calMonth + '-' + d) === todayStr ? 'today' : ''}" onclick="selectCalDay(${d})">${d}</button>`;
+  document.getElementById('calDays').innerHTML = html;
+}
+function selectCalDay(day) {
+  const usDate = String(calMonth + 1).padStart(2, '0') + '/' + String(day).padStart(2, '0') + '/' + String(calYear).slice(-2);
+  if (calTarget === 'noteExpiry') { noteExpiryDate = usDate; document.getElementById('noteExpiryLabel').textContent = usDate; }
+  closeCalendar();
+}
+document.addEventListener('click', e => { if (!e.target.closest('.calendar-popup') && !e.target.closest('.date-picker-btn')) closeCalendar(); });
+
+function toggleAdvDrawer() { advDrawerOpen = !advDrawerOpen; document.getElementById('advDrawer').classList.toggle('open', advDrawerOpen); }
+
+// ── Lock modal ────────────────────────────────────────────
+let _lockModalId = null, _lockMode = 'indef', _lockDatePicker = null;
+function _setLockMode(mode) {
+  _lockMode = mode;
+  const paint = (btnId, on) => { const b = document.getElementById(btnId); if (!b) return; b.style.background = on ? 'var(--accent)' : 'var(--surface)'; b.style.color = on ? '#fff' : 'var(--text-secondary)'; b.style.fontWeight = on ? '600' : '400'; };
+  paint('lockMode_indef', mode === 'indef'); paint('lockMode_date', mode === 'date');
+  const row = document.getElementById('lockDateRow'); if (row) row.style.display = mode === 'date' ? 'block' : 'none';
+}
+function _initLockDatePicker(initial) {
+  if (_lockDatePicker && _lockDatePicker.picker) _lockDatePicker.picker.remove();
+  const trig = document.getElementById('lockDateTrigger'), lbl = document.getElementById('lockDateLabel');
+  if (!trig) { _lockDatePicker = null; return; }
+  _lockDatePicker = new SingleDatePicker({ trigger: trig, labelEl: lbl, placeholder: 'Select date' });
+  if (initial instanceof Date) _lockDatePicker.setDate(initial);
+}
+function openLockModal(id) {
+  const f = findProductMarket(id);
+  if (!f) return;
+  _lockModalId = id;
+  const lock = f.pm.lock;
+  document.getElementById('lockModalTitle').textContent = lock?.locked ? 'Edit Lock' : 'Lock Price';
+  document.getElementById('lockModalUnit').textContent = f.country.name + ' \u00b7 ' + f.pm.product;
+  document.getElementById('lockReason').value = lock?.reason ?? '';
+  document.getElementById('lockRemoveBtn').style.display = lock?.locked ? 'inline-flex' : 'none';
+  if (lock?.locked && lock.lockUntil) { _setLockMode('date'); _initLockDatePicker(new Date(lock.lockUntil)); }
+  else { _setLockMode('indef'); _initLockDatePicker(new Date(Date.now() + 30 * 864e5)); }
+  openModal('lockModal');
+}
+function saveLockFromModal() {
+  if (!_lockModalId) return;
+  const reason = document.getElementById('lockReason').value.trim() || null;
+  let untilDate = null;
+  if (_lockMode === 'date') {
+    untilDate = _lockDatePicker?.getDate() ?? null;
+    if (!untilDate) { alert('Please pick a lock end date, or choose Indefinite.'); return; }
+    if (untilDate.getTime() <= Date.now()) { alert('Lock end date must be in the future.'); return; }
+  }
+  applyLock(_lockModalId, untilDate, reason);
+  closeModal('lockModal'); renderTable();
+}
+function removeLockFromModal() { if (!_lockModalId) return; clearLock(_lockModalId); closeModal('lockModal'); renderTable(); }
+
+// ── Last-updated label ────────────────────────────────────
+(function () {
+  const d = new Date(); d.setHours(8, 0, 0, 0);
+  const el = document.getElementById('rerunTimestamp');
+  if (el) el.textContent = 'Last updated: 8:00 AM today \u00b7 Feedinfo & Boyar refreshed Mon';
+})();
+
+// ── Init ──────────────────────────────────────────────────
+expireStaleLocks();
+populateFilters();
+document.getElementById('commitBtn').addEventListener('click', commitDecisions);
+refreshCommitBtn();
+renderTable();
+</script>
+
+<!-- ── Row-level Pricing Copilot panel ── -->
+<aside class="cprp" id="rowCopilotPanel" aria-hidden="true">
+  <button id="rowCopilotCloseBtn" style="position:absolute;top:12px;right:12px;z-index:30;background:#2a2e38;border:1px solid #4b5563;color:#fff;font-size:20px;font-weight:bold;cursor:pointer;padding:4px 8px;line-height:1;border-radius:50%;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;">&times;</button>
+  <div class="cprp-head" id="rowCopilotHead"></div>
+  <div class="cprp-chat" id="rowCopilotChat"></div>
+  <div class="cprp-suggest" id="rowCopilotSuggest"></div>
+  <div class="cprp-input-wrap">
+    <input type="text" class="cp-input" id="rowCopilotInput" placeholder="Ask about this market..." onkeydown="if(event.key==='Enter'){rowCopilotSend();}"/>
+    <button type="button" class="cp-send" onclick="rowCopilotSend()" aria-label="Send"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h10M8 3l4 4-4 4"/></svg></button>
+  </div>
+</aside>
+
+<style>
+  .cprp { position:fixed;top:0;right:0;width:380px;height:100vh;background:linear-gradient(180deg,#1a1d23 0%,#1e2128 100%);border-left:1px solid #2a2d35;z-index:200;display:none;flex-direction:column;transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:-8px 0 32px rgba(0,0,0,.35);font-family:'Inter',sans-serif; }
+  .cprp.open { display:flex;transform:translateX(0); }
+  .cprp-head { padding:16px 16px 12px;border-bottom:1px solid #2a2d35;flex-shrink:0; }
+  .cprp-dest { font-size:15px;font-weight:700;color:#fff;margin-bottom:2px; }
+  .cprp-wk { font-size:12px;color:#9ca3af;margin-bottom:6px; }
+  .cprp-metrics { font-size:12px;color:#d1d5db;line-height:1.6; }
+  .cprp-sep { color:#4b5563;margin:0 4px; }
+  .cprp-label-bar { margin-top:8px;padding-top:8px;border-top:1px solid #2a2d35; }
+  .cprp-label { font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.04em; }
+  .cprp-chat { flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px; }
+  .cprp-suggest { padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid #2a2d35; }
+  .cprp-input-wrap { display:flex;align-items:center;gap:8px;padding:10px 16px;border-top:1px solid #2a2d35;flex-shrink:0; }
+  .cp-input { flex:1;background:#23262f;border:1px solid #3d4150;border-radius:6px;padding:8px 12px;color:#e5e7eb;font-size:12.5px;font-family:'Inter',sans-serif;outline:none; }
+  .cp-input::placeholder { color:#6b7280; }
+  .cp-input:focus { border-color:var(--accent); }
+  .cp-send { background:var(--accent);border:none;border-radius:6px;width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;flex-shrink:0;transition:background .15s; }
+  .cp-send:hover { background:var(--accent-dim); }
+  .cp-msg { max-width:88%;padding:8px 12px;border-radius:8px;font-size:12.5px;line-height:1.55;white-space:pre-line;word-wrap:break-word; }
+  .cp-asst { background:#23262f;color:#d1d5db;align-self:flex-start;border-bottom-left-radius:2px; }
+  .cp-user { background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:2px; }
+  .cp-typing { display:flex;gap:4px;padding:8px 12px;align-self:flex-start; }
+  .cp-typing span { width:6px;height:6px;border-radius:50%;background:#6b7280;animation:cpBounce .6s infinite alternate; }
+  .cp-typing span:nth-child(2) { animation-delay:.15s; }
+  .cp-typing span:nth-child(3) { animation-delay:.3s; }
+  @keyframes cpBounce { to { opacity:.3;transform:translateY(-4px); } }
+  .cp-pill { background:#23262f;border:1px solid #3d4150;color:#d1d5db;font-size:11.5px;font-family:'Inter',sans-serif;padding:5px 10px;border-radius:14px;cursor:pointer;white-space:nowrap;transition:border-color .15s,color .15s; }
+  .cp-pill:hover { border-color:var(--accent);color:#fff; }
+</style>
+
+<script>
+// ── Pricing Copilot ─────────────────────────────────────────
+let _cpCtx = null;
+
+function openRowCopilot(pmId, countryId) {
+  const country = COUNTRIES.find(c => c.id === countryId);
+  if (!country) return;
+  const pm = pmId ? country.products.find(p => p.id === pmId) : null;
+  if (pmId && !pm) return;
+  _cpCtx = { pmId, pm, country };
+  document.getElementById('rowCopilotChat').innerHTML = '';
+  const sym = country.sym;
+  if (pm) {
+    document.getElementById('rowCopilotHead').innerHTML = `
+      <div class="cprp-dest">${country.name} \u00b7 ${pm.product}</div>
+      <div class="cprp-wk">${pm.spec} \u00b7 ${country.regionName} \u00b7 ${pm.id}</div>
+      <div class="cprp-metrics">Price: ${fmtP(pm.price, sym)}/t <span class="cprp-sep">\u00b7</span> Guidance: ${fmtP(effectiveRec(pm), sym)}/t <span class="cprp-sep">\u00b7</span> Feedinfo ${fmtPct(pm.benchMove4w)}</div>
+      <div class="cprp-label-bar"><span class="cprp-label">\u2726 Pricing Copilot</span></div>`;
+  } else {
+    document.getElementById('rowCopilotHead').innerHTML = `
+      <div class="cprp-dest">${country.name}</div>
+      <div class="cprp-wk">${country.regionName} \u00b7 ${country.products.length} products \u00b7 ${country.pm}</div>
+      <div class="cprp-metrics">Cap. util ${country.capUtil}% <span class="cprp-sep">\u00b7</span> Demand ${fmtPct(country.momentum)} <span class="cprp-sep">\u00b7</span> Signal: ${signalLevelForScore(country.signal).label}</div>
+      <div class="cprp-label-bar"><span class="cprp-label">\u2726 Pricing Copilot</span></div>`;
+  }
+  const panel = document.getElementById('rowCopilotPanel');
+  panel.style.display = ''; panel.classList.add('open'); panel.setAttribute('aria-hidden', 'false');
+  renderRowCopilotSuggest();
+  rowCopilotShowTyping();
+  setTimeout(() => { rowCopilotHideTyping(); rowCopilotPush('asst', buildContextMessage()); }, 400);
+}
+
+function buildContextMessage() {
+  const { pm, country } = _cpCtx;
+  const sym = country.sym;
+  if (!pm) {
+    const sig = signalLevelForScore(country.signal);
+    return `Market overview for ${country.name}:\n`
+      + `- Market signal: ${sig.label} \u2014 ${sig.interp.toLowerCase()}\n`
+      + `- Feedinfo ${fmtP(country.feedinfo, sym)}/t (${fmtPct(country.benchMove4w)} 4-wk), Boyar ${fmtP(country.boyar, sym)}/t\n`
+      + `- Capacity utilization ${country.capUtil}% \u00b7 demand ${fmtPct(country.momentum)} vs plan\n`
+      + `- ${country.products.length} products: ${recSummaryHtml(country.products).replace(/<[^>]+>/g, '')}\n`
+      + `What would you like to explore?`;
+  }
+  const sig = signalLevelForScore(pm.signal);
+  return `Position for ${country.name} \u00b7 ${pm.product}:\n`
+    + `- Current ${fmtP(pm.price, sym)}/t \u2192 guidance ${fmtP(effectiveRec(pm), sym)}/t (${fmtPct(effectivePct(pm))}), corridor ${fmtP(pm.corridorLow, sym)}\u2013${fmtP(pm.corridorHigh, sym)}\n`
+    + `- Feedinfo ${fmtP(pm.feedinfo, sym)} (${fmtPct(pm.benchMove4w)} 4-wk) \u00b7 Boyar ${fmtP(pm.boyar, sym)} \u00b7 8-wk forecast ${fmtP(pm.fcst8w, sym)}\n`
+    + `- Capacity ${pm.capUtil}% \u00b7 demand ${fmtPct(pm.momentum)} vs plan \u00b7 variable cost ${fmtP(pm.varCost, sym)} (${fmtPct(pm.costMove4w)})\n`
+    + `- Market signal: ${sig.label}\n`
+    + `What would you like to explore?`;
+}
+
+function renderRowCopilotSuggest() {
+  const { pm } = _cpCtx;
+  const qs = [];
+  if (!pm) { qs.push('Which products should I reprice first?'); qs.push('How do the benchmarks compare?'); qs.push('Is capacity a constraint here?'); qs.push('What is driving demand?'); }
+  else {
+    qs.push('Why this price guidance?');
+    if (Math.abs(pm.benchMove4w) >= 3) qs.push('What is the market doing?');
+    if (pm.capUtil >= 90) qs.push('Should I push harder given capacity?');
+    qs.push('What is my margin at the guidance?');
+    qs.push('How does this compare to the benchmarks?');
+  }
+  document.getElementById('rowCopilotSuggest').innerHTML = [...new Set(qs)].slice(0, 4).map(q =>
+    `<button type="button" class="cp-pill" onclick="rowCopilotAskSuggest('${q.replace(/'/g, "\\'")}')">${q}</button>`).join('');
+}
+function rowCopilotPush(role, text) {
+  const chat = document.getElementById('rowCopilotChat');
+  const div = document.createElement('div'); div.className = 'cp-msg ' + (role === 'asst' ? 'cp-asst' : 'cp-user'); div.textContent = text;
+  chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
+}
+function rowCopilotShowTyping() { const chat = document.getElementById('rowCopilotChat'); const div = document.createElement('div'); div.className = 'cp-typing'; div.id = 'rowCpTyping'; div.innerHTML = '<span></span><span></span><span></span>'; chat.appendChild(div); chat.scrollTop = chat.scrollHeight; }
+function rowCopilotHideTyping() { const t = document.getElementById('rowCpTyping'); if (t) t.remove(); }
+function rowCopilotSend() {
+  const input = document.getElementById('rowCopilotInput'); const q = (input.value || '').trim(); if (!q) return;
+  input.value = ''; rowCopilotPush('user', q); rowCopilotShowTyping();
+  setTimeout(() => { rowCopilotHideTyping(); rowCopilotPush('asst', _answer(q)); }, 700);
+}
+function rowCopilotAskSuggest(q) { document.getElementById('rowCopilotInput').value = q; rowCopilotSend(); }
+function closeRowCopilot() { const p = document.getElementById('rowCopilotPanel'); p.classList.remove('open'); p.style.display = 'none'; p.setAttribute('aria-hidden', 'true'); _cpCtx = null; }
+
+function _answer(q) {
+  const ctx = _cpCtx;
+  if (!ctx) return 'Open a market row to get specific analysis.';
+  const { pm, country } = ctx;
+  const sym = country.sym;
+  const ql = q.toLowerCase();
+
+  if (!pm) {
+    if (/(reprice|first|priority|which product)/.test(ql)) {
+      const ranked = [...country.products].sort((a, b) => Math.abs(effectivePct(b)) - Math.abs(effectivePct(a)));
+      return `Products to review in ${country.name}:\n` + ranked.map(p => `\u2022 ${p.product}: guidance ${fmtPct(effectivePct(p))} (${recActionFor(p)}) \u2014 corridor ${fmtP(p.corridorLow, sym)}\u2013${fmtP(p.corridorHigh, sym)}`).join('\n') + `\n\nStart with the largest moves \u2014 they carry the most margin impact.`;
+    }
+    if (/(benchmark|feedinfo|boyar)/.test(ql)) return `${country.name} benchmarks: Feedinfo ${fmtP(country.feedinfo, sym)}/t (${fmtPct(country.benchMove4w)} over 4 weeks), Boyar ${fmtP(country.boyar, sym)}/t. Adisseo's volume-weighted price is ${fmtP(country.price, sym)}/t \u2014 ${Math.round((country.price - country.blended) / country.blended * 1000) / 10}% vs the blended benchmark.`;
+    if (/(capacity|constraint|supply)/.test(ql)) return `Capacity utilization in ${country.name} is ${country.capUtil}%. ${country.capUtil >= 90 ? 'That is above the 90% alert threshold \u2014 spare supply is limited, which supports holding or raising price rather than chasing volume.' : country.capUtil <= 75 ? 'There is spare capacity, so guidance leans toward protecting volume over margin.' : 'Utilization is in the normal band and is not a binding constraint on pricing right now.'}`;
+    if (/(demand|driving|momentum)/.test(ql)) return `Demand momentum in ${country.name} is ${fmtPct(country.momentum)} vs plan, with order intake at ${Math.round(country.intake / country.planIntake * 100)}% of plan this month. ${country.momentum > 5 ? 'Feed producers are covering forward as benchmarks rise \u2014 the classic setup for a price increase.' : country.momentum < -5 ? 'Buyers are holding back while benchmarks soften \u2014 guidance trims price to protect share.' : 'Demand is tracking plan; guidance stays close to current levels.'}`;
+    return `I can help with ${country.name}. Try asking which products to reprice first, how the benchmarks compare, whether capacity is a constraint, or what is driving demand.`;
+  }
+
+  const drivers = guidanceDrivers(pm);
+  if (/(why|guidance|recommend|explain)/.test(ql)) {
+    return `Guidance for ${country.name} \u00b7 ${pm.product} is ${fmtP(effectiveRec(pm), sym)}/t (${fmtPct(effectivePct(pm))}), corridor ${fmtP(pm.corridorLow, sym)}\u2013${fmtP(pm.corridorHigh, sym)}.\n\nDrivers:\n` + drivers.map(d => `\u2022 ${d.text}`).join('\n') + `\n\nThe 8-week market price forecast is ${fmtP(pm.fcst8w, sym)}/t; the corridor keeps you inside the expected range while the guidance point positions you against the blended benchmark.`;
+  }
+  if (/(market|doing|movement|trend)/.test(ql)) return `Feedinfo has moved ${fmtPct(pm.benchMove4w)} over the last 4 weeks to ${fmtP(pm.feedinfo, sym)}/t, Boyar sits at ${fmtP(pm.boyar, sym)}/t. The model expects ${fmtP(pm.fcst8w, sym)}/t in 8 weeks \u2014 ${pm.fcst8w > pm.feedinfo ? 'continued firming' : pm.fcst8w < pm.feedinfo ? 'further easing' : 'a flat market'}.${Math.abs(pm.benchMove4w) >= 5 ? ' This crossed the significant-movement threshold, which is why the row is flagged.' : ''}`;
+  if (/(capacity|push|harder)/.test(ql)) return `Capacity utilization for ${pm.product} in ${country.name} is ${pm.capUtil}%. ${pm.capUtil >= 90 ? 'With supply this tight, the guidance already includes a scarcity premium; pushing above the corridor high (' + fmtP(pm.corridorHigh, sym) + ') risks losing contract volume to imports.' : 'Capacity is not binding, so the guidance is driven by benchmarks and demand rather than scarcity.'}`;
+  if (/(margin|cost)/.test(ql)) { const g = effectiveRec(pm); const m = Math.round((g - pm.varCost) / g * 1000) / 10; return `At the guidance of ${fmtP(g, sym)}/t and a variable cost of ${fmtP(pm.varCost, sym)}/t, contribution margin is ${fmtP(g - pm.varCost, sym)}/t (${m}%). Variable cost has moved ${fmtPct(pm.costMove4w)} over 4 weeks. The guidance floor is variable cost + 18%, i.e. ${fmtP(Math.round(pm.varCost * 1.18 / 5) * 5, sym)}/t.`; }
+  if (/(benchmark|compare|feedinfo|boyar)/.test(ql)) { const gap = Math.round((pm.price - pm.blended) / pm.blended * 1000) / 10; return `Current price ${fmtP(pm.price, sym)}/t is ${gap > 0 ? '+' : ''}${gap}% vs the blended benchmark (${fmtP(pm.blended, sym)}/t = 60% Feedinfo, 40% Boyar). Guidance ${fmtP(effectiveRec(pm), sym)}/t would be ${Math.round((effectiveRec(pm) - pm.blended) / pm.blended * 1000) / 10 > 0 ? '+' : ''}${Math.round((effectiveRec(pm) - pm.blended) / pm.blended * 1000) / 10}% vs benchmark.`; }
+  return `I can help with ${country.name} \u00b7 ${pm.product}. Try asking why this guidance, what the market is doing, whether capacity matters, your margin at guidance, or how it compares to the benchmarks.`;
+}
+
+document.getElementById('rowCopilotCloseBtn').addEventListener('click', e => { e.stopPropagation(); closeRowCopilot(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('rowCopilotPanel')?.classList.contains('open')) closeRowCopilot(); });
+</script>
+</body>
+</html>

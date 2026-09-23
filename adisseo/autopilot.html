@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autopilot — Dynamica Methionine</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="data.js"></script>
+  <style>
+    /* Toggle switch (ported from SmartGate styles) */
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-track { position: absolute; inset: 0; background: #d4d6dc; border-radius: 999px; transition: background .15s; }
+    .switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+    .switch input:checked + .switch-track { background: var(--accent); }
+    .switch input:checked + .switch-track .switch-thumb { transform: translateX(14px); }
+    .switch input:focus-visible + .switch-track { box-shadow: 0 0 0 3px rgba(232,0,125,0.18); }
+
+    /* Autopilot — scoped to .ap- */
+    [hidden] { display: none !important; }
+
+    .ap-page {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--body-bg);
+    }
+    .ap-header-row {
+      flex-shrink: 0;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .ap-heading {
+      font-family: 'Inter', sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+    .ap-master {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .ap-master .state-label { min-width: 24px; }
+    .ap-master .state-label.on { color: #047857; }
+    .ap-spacer { flex: 1; }
+    .ap-reset-btn {
+      font-family: 'Inter', sans-serif;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--accent);
+      background: none;
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .ap-reset-btn:hover { background: rgba(232,0,125,0.08); }
+    .ap-park-filter {
+      font-family: 'Inter', sans-serif;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text-primary);
+      background: var(--surface);
+      border: 1px solid var(--border-mid);
+      border-radius: 20px;
+      height: 30px;
+      padding: 0 28px 0 12px;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+    }
+    .ap-park-filter:hover { border-color: var(--accent); }
+
+    /* KPI strip */
+    .ap-kpis {
+      flex-shrink: 0;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .ap-kpi {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      min-width: 150px;
+      font-family: 'Inter', sans-serif;
+    }
+    .ap-kpi .label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .ap-kpi .value {
+      font-size: 19px;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+      margin-top: 3px;
+    }
+    .ap-kpi .value .unit { font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-left: 4px; }
+    .ap-kpi.k-auto   .value { color: #047857; }
+    .ap-kpi.k-review .value { color: #b45309; }
+
+    /* Table */
+    .ap-table-wrap {
+      flex: 1;
+      overflow: auto;
+      background: var(--surface);
+    }
+    table.ap-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      min-width: 720px;
+      max-width: 1080px;
+      font-family: 'Inter', sans-serif;
+      font-size: 11.5px;
+      background: var(--surface);
+    }
+    table.ap-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 8px 14px;
+      font-weight: 600;
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: #fafbfc;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    table.ap-table thead th .sub {
+      display: block;
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 10px;
+      margin-top: 2px;
+    }
+    table.ap-table tbody td {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+      vertical-align: middle;
+      white-space: nowrap;
+      background: var(--surface);
+    }
+    table.ap-table tbody tr:hover td { background-color: var(--row-hover); }
+    table.ap-table tbody tr.row-park td { background: #f6f8fc; font-weight: 600; }
+    table.ap-table tbody tr.row-park:hover td { background: #eef2f8; }
+    table.ap-table tbody tr.row-park td.col-name { padding-left: 12px; }
+    table.ap-table tbody tr.row-week td.col-name { padding-left: 32px; box-shadow: inset 2px 0 0 var(--border); }
+
+    .accordion-name {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .accordion-chev {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      color: var(--text-secondary);
+      transition: transform .15s ease, background .12s, color .12s;
+    }
+    .accordion-name:hover .accordion-chev { background: rgba(232,0,125,0.08); color: var(--accent); }
+    .accordion-name.expanded .accordion-chev { transform: rotate(90deg); color: var(--accent); }
+    .lvl-park-name { font-weight: 600; color: var(--text-primary); }
+    .lvl-week-name { font-weight: 500; color: var(--text-primary); }
+    .park-country {
+      font-weight: 400;
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-left: 6px;
+      letter-spacing: 0.02em;
+    }
+    .row-meta {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 10.5px;
+    }
+
+    /* Per-row rule controls */
+    .ap-rule-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ap-rule-cell .pm, .ap-rule-cell .unit {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+    }
+    input.ap-thresh {
+      width: 56px;
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--border-mid);
+      border-radius: var(--radius);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      background: var(--surface);
+      transition: border-color .12s;
+    }
+    input.ap-thresh:hover { border-color: var(--accent); }
+    input.ap-thresh:focus { outline: 1.5px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+    /* Inherited values read muted; explicit overrides read accented */
+    input.ap-thresh.inherited { color: var(--text-muted); }
+    input.ap-thresh.custom { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .ap-inherit-reset {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1;
+      transition: color .12s, background .12s;
+    }
+    .ap-inherit-reset:hover { color: var(--accent); background: rgba(232,0,125,0.08); }
+    .ap-inherit-reset[hidden] { display: none; }
+
+    .ap-note {
+      padding: 14px 24px 24px;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      max-width: 720px;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Top Nav ── -->
+  <nav class="topnav">
+    <a href="pricing.html" style="display:flex;align-items:center;gap:8px;margin-right:32px;text-decoration:none;flex-shrink:0;">
+      <img src="engine_logo (2).png" style="height:28px;width:auto;display:block;" alt="Dynamica">
+      <div style="display:flex;flex-direction:column;line-height:1;gap:2px;">
+        <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;color:#ffffff;text-transform:uppercase;">DYNAMICA</span>
+        <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:400;letter-spacing:0.02em;color:rgba(255,255,255,0.55);">Methionine Pricing Cockpit</span>
+      </div>
+    </a>
+    <div class="nav-tabs">
+      <a href="pricing.html" class="nav-tab">Price Cockpit</a>
+      <a href="autopilot.html" class="nav-tab active">Autopilot</a>
+      <a href="parameters.html" class="nav-tab">Parameters</a>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="position:relative;">
+      <button class="nav-menu-btn" id="menuBtn" onclick="document.getElementById('navDropdown').classList.toggle('open')"><span></span><span></span><span></span></button>
+      <div class="nav-dropdown" id="navDropdown">
+        <a href="login.html" style="color:var(--text-secondary);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 3H3v10h4"/><path d="M10 11l3-3-3-3"/><line x1="13" y1="8" x2="6.5" y2="8"/></svg>Log out</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="ap-page">
+
+    <div class="ap-header-row">
+      <h1 class="ap-heading">Autopilot</h1>
+      <span style="font-family:'Inter',sans-serif;font-size:12px;color:var(--text-muted);">Autopilot is switched on or off per market</span>
+      <div class="ap-spacer"></div>
+      <button class="ap-reset-btn" type="button" id="apRulesReset">Reset all rules</button>
+      <select class="ap-park-filter" id="apParkFilter" aria-label="Filter by market">
+        <option value="">All markets</option>
+      </select>
+    </div>
+
+
+    <div class="ap-table-wrap">
+      <table class="ap-table">
+        <thead>
+          <tr>
+            <th>Market / Week</th>
+            <th>Autopilot<span class="sub">on / off per market</span></th>
+            <th>Auto-accept within<span class="sub">guidance outside goes to review</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="apBody"></tbody>
+      </table>
+      <div class="ap-note">
+        Autopilot is enabled per market. When on, price guidance within a row's band is accepted automatically; everything else is
+        queued for manual review in the Price Cockpit. Week rows inherit their market's rules —
+        edit a value to override it (shown in pink), and use ↺ to go back to inheriting. Switching a market off routes every guidance to manual review.
+        Rules are saved in this browser.
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+document.addEventListener('click', e => { if(!e.target.closest('.nav-menu-btn') && !e.target.closest('.nav-dropdown')) document.getElementById('navDropdown').classList.remove('open'); });
+</script>
+
+<script>
+(function () {
+
+  // ── Seeded RNG (same scheme as the Pricing page) ──
+  function hashStr(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function rngFor(key) { return mulberry32(hashStr(key)); }
+  function pick(rng, lo, hi) { return lo + rng() * (hi - lo); }
+
+  // ── Domain (mirrors the Price Cockpit: markets × products) ──
+  const REGION_CODE = { EU: 'Europe', AS: 'Asia', AM: 'Americas' };
+  const PARKS = COUNTRIES.map(c => ({ id: c.id, name: c.name, country: REGION_CODE[c.region] || c.region }));
+  const CHANNELS = PRODUCTS.map(p => p.id);
+
+  // ── 8-week horizon from Mon 2026-09-21 ──
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function buildWeeks() {
+    const weeks = [];
+    const start = new Date(Date.UTC(2026, 8, 21));   // Mon 2026-09-21
+    for (let w = 0; w < 8; w++) {
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setUTCDate(start.getUTCDate() + w * 7 + i);
+        const iso = d.toISOString().slice(0, 10);
+        const dow = d.getUTCDay();
+        days.push({
+          iso,
+          isWeekend: dow === 0 || dow === 6,
+          // Feedinfo/Boyar publication week (higher guidance churn): 2026-10-05 .. 10-11
+          isHoliday: iso >= '2026-10-05' && iso <= '2026-10-11',
+        });
+      }
+      const a = days[0], b = days[6];
+      const label = d => String(new Date(d.iso).getUTCDate()).padStart(2, '0') + ' ' + MONTHS_SHORT[new Date(d.iso).getUTCMonth()];
+      const sameMonth = a.iso.slice(5, 7) === b.iso.slice(5, 7);
+      weeks.push({
+        key: 'w' + w,
+        num: w + 1,
+        label: sameMonth ? label(a).slice(0, 2) + '–' + label(b) : label(a) + ' – ' + label(b),
+        days,
+      });
+    }
+    return weeks;
+  }
+  const WEEKS = buildWeeks();
+
+  // ── Per market × day: one guidance move per product ──
+  // Same shape of logic as the Pricing page: weekend/holiday lift demand and
+  // the demand level (internal here) drives the direction/size of the move;
+  // standard days mostly hold. ~4% of changes are wild outliers.
+  function dayChanges(park, day) {
+    const r = rngFor('ap|' + park.id + '|' + day.iso);
+    let ds = day.isWeekend ? 65 : 38;
+    if (day.isHoliday) ds += 18;
+    ds += pick(r, -14, 14);
+    ds = Math.max(8, Math.min(99, Math.round(ds)));
+    const ppt = Math.round((ds - 42) * 0.55);
+    const dl = ppt >= 20 ? 5 : ppt >= 10 ? 4 : ppt >= -5 ? 3 : ppt >= -10 ? 2 : 1;
+
+    return CHANNELS.map(ch => {
+      const cr = rngFor('apch|' + park.id + '|' + ch + '|' + day.iso);
+      let pct = 0;
+      if      (dl === 5) pct = pick(cr, 4, 9);
+      else if (dl === 4) pct = pick(cr, 2, 5);
+      else if (dl === 2) pct = pick(cr, -6, -3);
+      else if (dl === 1) pct = pick(cr, -12, -7);
+      else if (cr() < 0.15) pct = pick(cr, -2, 2);   // standard days mostly hold
+      if (cr() < 0.04) pct = (cr() > 0.5 ? 1 : -1) * pick(cr, 11, 16);   // wild outlier
+      return Math.round(pct * 10) / 10;
+    });
+  }
+
+  // ── Rules (persisted) ──
+  // Every row carries its own rules. Week rows inherit from their park, park
+  // rows inherit from the built-in defaults, unless explicitly overridden in
+  // `overrides` (keyed by parkId or `parkId|weekKey`).
+  const RULES_KEY = 'adisseo.autopilot';
+  const DEFAULTS = { maxAuto: 5 };
+  function loadRules() {
+    const out = { overrides: {} };
+    try {
+      const raw = localStorage.getItem(RULES_KEY);
+      if (!raw) return out;
+      const parsed = JSON.parse(raw);
+      if (parsed.overrides && typeof parsed.overrides === 'object') out.overrides = parsed.overrides;
+      return out;
+    } catch (e) { return out; }
+  }
+  function saveRules() { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); }
+  let rules = loadRules();
+
+  function ovr(scope) { return rules.overrides[scope] || {}; }
+  // Autopilot on/off is a market-level decision (default: on).
+  function houseEnabled(parkId) { return ovr(parkId).enabled !== false; }
+  // Effective rule values + where they come from ('own' | 'inherited').
+  function effectiveRules(parkId, weekKey) {
+    const p = ovr(parkId);
+    const w = weekKey != null ? ovr(parkId + '|' + weekKey) : {};
+    return {
+      maxAuto:        w.maxAuto    != null ? w.maxAuto    : (p.maxAuto    != null ? p.maxAuto    : DEFAULTS.maxAuto),
+      maxAutoOwn:     weekKey != null ? w.maxAuto    != null : p.maxAuto    != null,
+    };
+  }
+
+  // ── Classification: within the row's band → auto, otherwise review ──
+  function weekStats(park, week) {
+    const eff = effectiveRules(park.id, week.key);
+    let changes = 0, auto = 0, review = 0, pctSum = 0;
+    week.days.forEach(day => {
+      dayChanges(park, day).forEach(pct => {
+        if (pct === 0) return;
+        changes++;
+        pctSum += pct;
+        if (!houseEnabled(park.id)) { review++; return; }
+        if (Math.abs(pct) <= eff.maxAuto) auto++; else review++;
+      });
+    });
+    return { changes, auto, review, avg: changes ? pctSum / changes : 0 };
+  }
+  function sumStats(list) {
+    let changes = 0, auto = 0, review = 0, wSum = 0;
+    list.forEach(s => { changes += s.changes; auto += s.auto; review += s.review; wSum += s.avg * s.changes; });
+    return { changes, auto, review, avg: changes ? wSum / changes : 0 };
+  }
+
+  function fmtPct(n) {
+    const r = Math.round(n * 10) / 10;
+    return (r > 0 ? '+' : '') + r.toFixed(1) + '%';
+  }
+
+  // ── Per-row rule controls ──
+  function threshCell(scope, value, own) {
+    return (
+      '<span class="ap-rule-cell">' +
+        '<span class="pm">±</span>' +
+        '<input type="number" class="ap-thresh ' + (own ? 'custom' : 'inherited') +
+          '" data-scope="' + scope + '" data-rule="maxAuto" min="0" max="20" step="0.5" value="' + value + '">' +
+        '<span class="unit">%</span>' +
+      '</span>'
+    );
+  }
+  function enabledCell(parkId) {
+    const on = houseEnabled(parkId);
+    return (
+      '<span style="display:inline-flex;align-items:center;gap:8px;">' +
+        '<label class="switch">' +
+          '<input type="checkbox" class="ap-enabled" data-scope="' + parkId + '" data-rule="enabled"' + (on ? ' checked' : '') + '>' +
+          '<span class="switch-track"><span class="switch-thumb"></span></span>' +
+        '</label>' +
+        '<span style="font-size:11px;font-weight:600;color:' + (on ? '#047857' : 'var(--text-muted)') + ';">' + (on ? 'On' : 'Off') + '</span>' +
+      '</span>'
+    );
+  }
+  function resetCell(scope) {
+    const hasOwn = Object.keys(ovr(scope)).length > 0;
+    return '<button class="ap-inherit-reset" data-scope="' + scope + '" title="Reset to inherited rules"' +
+      (hasOwn ? '' : ' hidden') + ' aria-label="Reset row rules">↺</button>';
+  }
+
+  // ── Accordion state ──
+  const expanded = { parks: new Set() };
+  let parkFilter = '';
+
+  const chevronSvg = '<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><polygon points="3,2 7,5 3,8"/></svg>';
+
+  // ── Render ──
+  function render() {
+    const body = document.getElementById('apBody');
+    const out = [];
+    const parks = PARKS.filter(p => !parkFilter || p.id === parkFilter);
+    const allStats = [];
+
+    parks.forEach(park => {
+      const perWeek = WEEKS.map(week => weekStats(park, week));
+      allStats.push(sumStats(perWeek));
+      const parkOpen = expanded.parks.has(park.id);
+      const parkEff = effectiveRules(park.id, null);
+
+      out.push(
+        '<tr class="row-park" data-park="' + park.id + '">' +
+          '<td class="col-name">' +
+            '<span class="accordion-name ' + (parkOpen ? 'expanded' : '') + '" role="button" tabindex="0" data-toggle="park" aria-expanded="' + parkOpen + '">' +
+              '<span class="accordion-chev">' + chevronSvg + '</span>' +
+              '<span class="lvl-park-name">' + park.name + '</span>' +
+              '<span class="park-country">' + park.country + '</span>' +
+            '</span>' +
+          '</td>' +
+          '<td>' + enabledCell(park.id) + '</td>' +
+          '<td' + (houseEnabled(park.id) ? '' : ' style="opacity:.4;"') + '>' + threshCell(park.id, parkEff.maxAuto, parkEff.maxAutoOwn) + '</td>' +
+          '<td>' + resetCell(park.id) + '</td>' +
+        '</tr>'
+      );
+      if (!parkOpen) return;
+
+      WEEKS.forEach(week => {
+        const scope = park.id + '|' + week.key;
+        const eff = effectiveRules(park.id, week.key);
+        out.push(
+          '<tr class="row-week" data-park="' + park.id + '" data-week="' + week.key + '">' +
+            '<td class="col-name"><span class="lvl-week-name">Week ' + week.num + '</span></td>' +
+            '<td><span class="row-meta" style="opacity:.7;">' + (houseEnabled(park.id) ? 'On' : 'Off') + ' · market</span></td>' +
+            '<td' + (houseEnabled(park.id) ? '' : ' style="opacity:.4;"') + '>' + threshCell(scope, eff.maxAuto, eff.maxAutoOwn) + '</td>' +
+            '<td>' + resetCell(scope) + '</td>' +
+          '</tr>'
+        );
+      });
+    });
+
+    body.innerHTML = out.length ? out.join('')
+      : '<tr><td colspan="4" style="text-align:center;font-style:italic;color:var(--text-muted);padding:32px;">No matching markets.</td></tr>';
+  }
+
+  // ── Events: accordion + per-row rule edits ──
+  const bodyEl = document.getElementById('apBody');
+
+  bodyEl.addEventListener('click', e => {
+    const reset = e.target.closest('.ap-inherit-reset');
+    if (reset) {
+      delete rules.overrides[reset.dataset.scope];
+      saveRules();
+      render();
+      return;
+    }
+    const toggle = e.target.closest('[data-toggle="park"]');
+    if (!toggle) return;
+    const k = toggle.closest('tr').dataset.park;
+    if (expanded.parks.has(k)) expanded.parks.delete(k);
+    else expanded.parks.add(k);
+    render();
+  });
+  bodyEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const toggle = e.target.closest('[data-toggle]');
+    if (!toggle) return;
+    e.preventDefault();
+    toggle.click();
+  });
+  bodyEl.addEventListener('change', e => {
+    const el = e.target;
+    const scope = el.dataset.scope;
+    if (!scope || !el.dataset.rule) return;
+    const o = rules.overrides[scope] || (rules.overrides[scope] = {});
+    if (el.dataset.rule === 'maxAuto') {
+      const n = parseFloat(el.value);
+      if (isNaN(n)) delete o.maxAuto;
+      else o.maxAuto = Math.max(0, Math.min(20, n));
+    } else if (el.dataset.rule === 'enabled') {
+      if (el.checked) delete o.enabled;   // on is the default — store only "off"
+      else o.enabled = false;
+    }
+    if (!Object.keys(o).length) delete rules.overrides[scope];
+    saveRules();
+    render();
+  });
+  // Commit threshold edits on Enter too
+  bodyEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList.contains('ap-thresh')) e.target.blur();
+  });
+
+  // ── Header controls ──
+  document.getElementById('apRulesReset').addEventListener('click', () => {
+    rules = { overrides: {} };
+    saveRules();
+    render();
+  });
+
+  const parkSel = document.getElementById('apParkFilter');
+  PARKS.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    parkSel.appendChild(opt);
+  });
+  parkSel.addEventListener('change', () => {
+    parkFilter = parkSel.value;
+    if (parkFilter) expanded.parks.add(parkFilter);
+    render();
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>

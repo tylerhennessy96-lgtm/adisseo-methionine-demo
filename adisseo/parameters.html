@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parameters — Dynamica Methionine</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="data.js"></script>
+  <script>const COMMUNITIES = COUNTRIES;</script>
+  <script src="filters.js"></script>
+</head>
+<body>
+<div class="app">
+  <nav class="topnav">
+    <a href="pricing.html" style="display:flex;align-items:center;gap:8px;margin-right:32px;text-decoration:none;flex-shrink:0;">
+      <img src="engine_logo (2).png" style="height:28px;width:auto;display:block;" alt="Dynamica">
+      <div style="display:flex;flex-direction:column;line-height:1;gap:2px;">
+        <span style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;color:#ffffff;text-transform:uppercase;">DYNAMICA</span>
+        <span style="font-family:'Inter',sans-serif;font-size:12px;font-weight:400;letter-spacing:0.02em;color:rgba(255,255,255,0.55);">Methionine Pricing Cockpit</span>
+      </div>
+    </a>
+    <div class="nav-tabs">
+      <a href="pricing.html" class="nav-tab">Price Cockpit</a>
+      <a href="autopilot.html" class="nav-tab">Autopilot</a>
+      <a href="parameters.html" class="nav-tab active">Parameters</a>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="position:relative;">
+      <button class="nav-menu-btn" id="menuBtn" onclick="toggleMenu()"><span></span><span></span><span></span></button>
+      <div class="nav-dropdown" id="navDropdown">
+        <a href="login.html" style="color:var(--text-secondary);"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 3H3v10h4"/><path d="M10 11l3-3-3-3"/><line x1="13" y1="8" x2="6.5" y2="8"/></svg>Log out</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="filter-bar" id="filterBar"></div>
+
+  <div style="display:flex;flex:1;overflow:hidden;">
+    <div id="paramNav" style="width:200px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;background:var(--surface);"></div>
+    <div id="paramPanel" style="flex:1;overflow-y:auto;padding:24px 32px;background:var(--body-bg);"></div>
+  </div>
+</div>
+
+<script>
+// ── Sections config ──────────────────────────────────────
+const PARAM_SECTIONS = [
+  {
+    group: 'Pricing',
+    icon: '<path d="M2 10h10M2 6h10M2 14h6"/>',
+    items: [
+      { id: 'optimization', label: 'Price Change Limits' },
+      { id: 'corridor',     label: 'Guidance Corridor' },
+      { id: 'benchmarks',   label: 'Benchmark Weighting' },
+    ]
+  },
+  {
+    group: 'Alerts',
+    icon: '<path d="M7 2a4 4 0 0 1 4 4c0 3 1.5 4 1.5 4H1.5S3 9 3 6a4 4 0 0 1 4-4z"/><line x1="7" y1="12" x2="7" y2="13"/>',
+    items: [
+      { id: 'alerts', label: 'Market & Capacity Alerts' },
+    ]
+  },
+  {
+    group: 'History',
+    icon: '<circle cx="7" cy="7" r="5"/><polyline points="7,4 7,7 9,9"/>',
+    items: []
+  },
+];
+
+const SECTION_META = {
+  optimization: { title:'Price Change Limits', desc:'Maximum move the engine may recommend per pricing cycle, per market and product' },
+  corridor:     { title:'Guidance Corridor', desc:'Width of the recommended price corridor and the contribution-margin floor over variable cost' },
+  benchmarks:   { title:'Benchmark Weighting', desc:'How Feedinfo and Boyar published prices are blended into the market reference' },
+  alerts:       { title:'Market & Capacity Alerts', desc:'Thresholds for significant market movement and capacity utilization alerts' },
+  history:      { title:'Parameter History', desc:'View parameters as configured on a specific date' },
+};
+
+let selectedParamSection = 'optimization';
+let expandedParamGroups = new Set(['Pricing','Alerts']);
+let expandedProperties = new Set();
+const paramChanges = {};
+
+// ── Nav menu ─────────────────────────────────────────────
+function toggleMenu() { document.getElementById('navDropdown').classList.toggle('open'); }
+document.addEventListener('click', e => { if(!e.target.closest('.nav-menu-btn')&&!e.target.closest('.nav-dropdown')) document.getElementById('navDropdown').classList.remove('open'); });
+
+// ── Filters (shared pill component) ───────────────────────
+let pillFilters = null;
+function getMsValues(id) { return pillFilters ? pillFilters.values(id) : []; }
+
+function populateFilters() {
+  pillFilters = createPillFilters({
+    container: document.getElementById('filterBar'),
+    filters: [
+      { id: 'state',     label: 'Regions',          items: [...new Set(COMMUNITIES.map(c => c.regionName))] },
+      { id: 'community', label: 'Countries',        items: COMMUNITIES.map(c => c.name) },
+      { id: 'rm',        label: 'Pricing Managers', items: [...new Set(COMMUNITIES.map(c => c.pm))] },
+    ],
+    storageKey: 'adisseo_params_filters',
+    onChange: renderParamPanel,
+  });
+}
+
+// ── Toast ────────────────────────────────────────────────
+function showToast(message) {
+  const existing = document.getElementById('toast'); if (existing) existing.remove();
+  const el = document.createElement('div'); el.id = 'toast';
+  el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1d23;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid var(--accent);box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:9999;opacity:0;transition:opacity .2s;display:flex;align-items:center;gap:8px;';
+  el.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="2,7 5.5,10.5 12,3"/></svg>' + message;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 2500);
+}
+
+// ── Sidebar ──────────────────────────────────────────────
+function renderParamNav() {
+  const nav = document.getElementById('paramNav');
+  let html = '';
+  PARAM_SECTIONS.forEach(g => {
+    const hasItems = g.items && g.items.length > 0;
+    const isHistorySelf = !hasItems && selectedParamSection === g.group.toLowerCase();
+    const expanded = expandedParamGroups.has(g.group);
+    const onClick = hasItems
+      ? `toggleParamGroup('${g.group}')`
+      : `selectParamSection('${g.group.toLowerCase()}')`;
+    const headerBg = isHistorySelf ? 'rgba(232,0,125,0.06)' : 'transparent';
+    const headerColor = isHistorySelf ? 'var(--accent)' : 'var(--text-muted)';
+    const borderL = isHistorySelf ? '3px solid var(--accent)' : '3px solid transparent';
+    html += `
+      <div onclick="${onClick}" style="display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;font-size:11px;font-weight:700;color:${headerColor};text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);user-select:none;background:${headerBg};border-left:${borderL};">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">${g.icon}</svg>
+        ${g.group}
+        ${hasItems ? `<svg width="10" height="10" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-left:auto;transform:rotate(${expanded ? '180' : '0'}deg);transition:transform .2s;"><path d="M1 1l4 4 4-4"/></svg>` : ''}
+      </div>
+    `;
+    if (hasItems && expanded) {
+      g.items.forEach(item => {
+        const sel = selectedParamSection === item.id;
+        html += `
+          <div onclick="selectParamSection('${item.id}')" style="padding:8px 14px 8px 32px;cursor:pointer;font-size:12.5px;font-weight:${sel ? '600' : '400'};color:${sel ? 'var(--accent)' : 'var(--text-secondary)'};background:${sel ? 'rgba(232,0,125,0.06)' : 'transparent'};border-left:3px solid ${sel ? 'var(--accent)' : 'transparent'};transition:all .1s;">
+            ${item.label}
+          </div>
+        `;
+      });
+    }
+  });
+  nav.innerHTML = html;
+}
+
+function selectParamSection(id) {
+  selectedParamSection = id;
+  renderParamNav();
+  renderParamPanel();
+}
+
+function toggleParamGroup(group) {
+  if (expandedParamGroups.has(group)) expandedParamGroups.delete(group);
+  else expandedParamGroups.add(group);
+  renderParamNav();
+}
+
+// ── Filter helper ────────────────────────────────────────
+function getFilteredCommunities() {
+  const sf=getMsValues('state'),cf=getMsValues('community'),rf=getMsValues('rm');
+  return PARAMETERS_DATA.filter(c=>{
+    if(sf.length&&!sf.includes(c.regionName))return false;
+    if(cf.length&&!cf.includes(c.name))return false;
+    if(rf.length&&!rf.includes(c.pm))return false;
+    return true;
+  });
+}
+
+// ── Cell builders ────────────────────────────────────────
+function pInp(val, suffix, key) {
+  const ck = key in paramChanges;
+  const bd = ck ? '2px solid var(--accent)' : '1px solid transparent';
+  return `<input type="text" value="${val}${suffix}" data-key="${key}" onfocus="this.style.border='1px solid var(--accent)';this.style.background='#fff'" onblur="fmtP(this,'${suffix}');this.style.background='transparent'" oninput="onP(this,'${key}','${suffix}')" style="width:62px;text-align:center;border:${bd};border-radius:4px;padding:4px 6px;font-family:'Inter',sans-serif;font-size:12.5px;background:transparent;outline:none;color:var(--text-primary);">`;
+}
+function dInp(val, key) {
+  const ck = key in paramChanges;
+  const bd = ck ? '2px solid var(--accent)' : '1px solid transparent';
+  return `<input type="text" value="${val}" data-key="${key}" onfocus="this.style.border='1px solid var(--accent)';this.style.background='#fff'" onblur="this.style.background='transparent';if(!this.dataset.changed)this.style.border='1px solid transparent'" oninput="onD(this,'${key}')" style="width:54px;text-align:center;border:${bd};border-radius:4px;padding:4px 6px;font-family:'Inter',sans-serif;font-size:12.5px;background:transparent;outline:none;color:var(--text-primary);">`;
+}
+function selInp(val, key) {
+  return `<select onchange="onS(this,'${key}')" style="border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-family:'Inter',sans-serif;font-size:12px;background:var(--surface);outline:none;color:var(--text-primary);cursor:pointer;"><option ${val==='Individual'?'selected':''}>Individual</option><option ${val==='Unit Group'?'selected':''}>Unit Group</option></select>`;
+}
+function togInp(val, key) {
+  return `<label class="toggle" style="margin:0 auto;"><input type="checkbox" ${val?'checked':''} onchange="onT(this,'${key}')"><span class="toggle-slider"></span></label>`;
+}
+function onP(input, key, suffix) {
+  const raw = input.value.replace(/[^0-9.\-]/g, '');
+  input.value = raw;
+  paramChanges[key] = parseFloat(raw);
+  input.style.border = '2px solid var(--accent)';
+  input.dataset.changed = 'true';
+  checkSave();
+}
+function fmtP(input, suffix) {
+  const v = parseFloat(input.value.replace(/[^0-9.\-]/g, ''));
+  input.value = isNaN(v) ? '' : v + suffix;
+  if (!input.dataset.changed) input.style.border = '1px solid transparent';
+}
+function onD(input, key) {
+  const v = parseInt(input.value);
+  if (!isNaN(v)) { paramChanges[key] = v; input.style.border = '2px solid var(--accent)'; input.dataset.changed = 'true'; }
+  checkSave();
+}
+function onS(sel, key) { paramChanges[key] = sel.value; checkSave(); }
+function onT(cb, key) { paramChanges[key] = cb.checked; checkSave(); }
+
+// Signed percent input (1-decimal, sign-constrained). `sign` is 'positive' or 'negative'.
+function pInpSigned(val, key, sign) {
+  const ck = key in paramChanges;
+  const bd = ck ? '2px solid var(--accent)' : '1px solid transparent';
+  const cur = (ck ? paramChanges[key] : val);
+  const formatted = Number(cur).toFixed(1);
+  return `<input type="text" value="${formatted}%" data-key="${key}" data-sign="${sign}" data-prev="${formatted}" onfocus="this.style.border='1px solid var(--accent)';this.style.background='#fff'" oninput="onSignedInput(this)" onblur="onSignedBlur(this)" style="width:68px;text-align:center;border:${bd};border-radius:4px;padding:4px 6px;font-family:'Inter',sans-serif;font-size:12.5px;background:transparent;outline:none;color:var(--text-primary);">`;
+}
+function onSignedInput(input) {
+  const raw = input.value.replace(/[^0-9.\-]/g, '');
+  input.value = raw;
+  input.style.border = '2px solid var(--accent)';
+}
+function onSignedBlur(input) {
+  const key  = input.dataset.key;
+  const sign = input.dataset.sign;
+  const prev = parseFloat(input.dataset.prev);
+  const raw  = parseFloat(input.value.replace(/[^0-9.\-]/g, ''));
+  const valid = !isNaN(raw) && (sign === 'positive' ? raw >= 0 : raw <= 0);
+  if (!valid) {
+    input.value = prev.toFixed(1) + '%';
+    input.style.background = 'rgba(232,0,125,0.12)';
+    input.style.border = '2px solid var(--accent)';
+    setTimeout(() => {
+      input.style.background = 'transparent';
+      if (!(key in paramChanges)) input.style.border = '1px solid transparent';
+    }, 450);
+    return;
+  }
+  paramChanges[key] = raw;
+  input.dataset.prev = raw.toFixed(1);
+  input.value = raw.toFixed(1) + '%';
+  input.style.background = 'transparent';
+  input.style.border = '2px solid var(--accent)';
+  checkSave();
+}
+
+function checkSave() {
+  const btn = document.getElementById('paramSaveBtn');
+  if (btn) btn.style.display = Object.keys(paramChanges).length > 0 ? 'inline-flex' : 'none';
+}
+
+function toggleProp(id) {
+  if (expandedProperties.has(id)) expandedProperties.delete(id);
+  else expandedProperties.add(id);
+  renderParamPanel();
+}
+
+// ── Section column definitions ───────────────────────────
+const SECTION_COLUMNS = {
+  optimization: [
+    { label:'Max Price Increase', render:(p,k)=>pInp(p.maxPriceChange,'%',k('maxPriceChange')) },
+    { label:'Max Price Decrease', render:(p,k)=>pInp(p.minPriceChange,'%',k('minPriceChange')) },
+    { label:'Review Cadence (days)', render:(p,k)=>dInp(p.reviewCadenceDays,k('reviewCadenceDays')) },
+  ],
+  corridor: [
+    { label:'Corridor Width (±%)', render:(p,k)=>pInp(p.corridorWidthPct,'%',k('corridorWidthPct')) },
+    { label:'Margin Floor over Var. Cost', render:(p,k)=>pInp(p.costFloorMarginPct,'%',k('costFloorMarginPct')) },
+  ],
+  benchmarks: [
+    { label:'Feedinfo Weight', render:(p,k)=>pInp(p.feedinfoWeightPct,'%',k('feedinfoWeightPct')) },
+    { label:'Boyar Weight', contextual: true, render:(p)=>`<span style="color:var(--text-secondary);font-size:12px;">${100 - (p.feedinfoWeightPct ?? 60)}%</span>` },
+  ],
+  alerts: [
+    { label:'Market Move Alert (±%)', render:(p,k)=>pInp(p.marketMoveAlertPct,'%',k('marketMoveAlertPct')) },
+    { label:'Capacity Alert (>%)', render:(p,k)=>pInp(p.capUtilAlertPct,'%',k('capUtilAlertPct')) },
+  ],
+};
+
+// ── Right panel: render ──────────────────────────────────
+function renderParamPanel() {
+  const panel = document.getElementById('paramPanel');
+  const meta = SECTION_META[selectedParamSection] ?? SECTION_META.optimization;
+
+  const header = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+      <div>
+        <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0 0 4px 0;">${meta.title}</h2>
+        <p style="font-size:12px;color:var(--text-muted);margin:0;">${meta.desc}</p>
+      </div>
+      <button id="paramSaveBtn" class="btn btn-primary" onclick="saveParams()" style="display:${Object.keys(paramChanges).length>0?'inline-flex':'none'};font-size:12px;">Save changes</button>
+    </div>
+  `;
+
+  let body = '';
+  if (SECTION_COLUMNS[selectedParamSection]) {
+    body = renderColumnSection(selectedParamSection);
+  } else if (selectedParamSection === 'history') {
+    body = renderHistorySection();
+  }
+
+  panel.innerHTML = header + body;
+}
+
+// ── Generic columned section ─────────────────────────────
+function renderColumnSection(sectionId) {
+  const cols = SECTION_COLUMNS[sectionId];
+  const data = getFilteredCommunities();
+  const ths = cols.map(c => `<th style="text-align:center;font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;padding:10px 8px;white-space:nowrap;">${c.label}</th>`).join('');
+
+  let rows = '';
+  data.forEach(comm => {
+    const propOpen = expandedProperties.has(comm.id);
+    const pkProp = (k) => comm.id + '-property-' + k;
+    const propCells = cols.map(c => `<td style="text-align:center;padding:6px 8px;">${c.render(comm.params, pkProp, comm)}</td>`).join('');
+    rows += `
+      <tr class="row-property">
+        <td style="position:sticky;left:0;background:var(--surface);z-index:5;font-weight:600;white-space:nowrap;padding:8px 12px;">
+          <button class="expand-btn ${propOpen?'open':''}" onclick="toggleProp('${comm.id}')"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4,2 8,6 4,10"/></svg></button>
+          ${comm.name}
+        </td>
+        ${propCells}
+      </tr>
+    `;
+    if (propOpen) {
+      comm.bedTypes.forEach(bt => {
+        const pkBt = (k) => comm.id + '-' + bt.type + '-' + k;
+        const btCells = cols.map(c => {
+          if (c.contextual) return `<td style="padding:6px 8px;background:rgba(0,0,0,0.015);"></td>`;
+          return `<td style="text-align:center;padding:6px 8px;background:rgba(0,0,0,0.015);">${c.render(bt.params, pkBt, comm)}</td>`;
+        }).join('');
+        rows += `
+          <tr class="row-bedtype">
+            <td style="position:sticky;left:0;background:#fafbfc;padding:7px 12px 7px 36px;z-index:5;white-space:nowrap;font-size:12px;color:var(--text-secondary);">${bt.type}</td>
+            ${btCells}
+          </tr>
+        `;
+      });
+    }
+  });
+
+  return `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th style="position:sticky;left:0;background:var(--surface);z-index:6;text-align:left;font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;padding:10px 12px;min-width:200px;">Market</th>
+              ${ths}
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ── History ──────────────────────────────────────────────
+function renderHistorySection() {
+  return `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px 16px;background:var(--surface);border-radius:8px;border:1px solid var(--border);">
+      <span style="font-size:13px;color:var(--text-secondary);">View parameters as of:</span>
+      <input type="date" id="historyDate" onchange="loadHistoryParams(this.value)" style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:6px 10px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text-primary);outline:none;background:var(--surface);">
+      <button onclick="setHistoryDate(30)" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">30 days ago</button>
+      <button onclick="setHistoryDate(60)" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">60 days ago</button>
+      <button onclick="setHistoryDate(90)" class="btn btn-ghost" style="font-size:11px;padding:5px 10px;">90 days ago</button>
+    </div>
+    <div id="historyContent"></div>
+  `;
+}
+
+function setHistoryDate(daysAgo) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  const formatted = d.toISOString().split('T')[0];
+  const el = document.getElementById('historyDate');
+  if (el) el.value = formatted;
+  loadHistoryParams(formatted);
+}
+
+function loadHistoryParams(dateStr) {
+  if (!dateStr) return;
+  const seed = new Date(dateStr).getTime();
+  const variation = (Math.floor(seed / 86400000) % 5) - 2;
+  renderHistoryView(variation);
+}
+
+function renderHistoryView(variation) {
+  const data = getFilteredCommunities();
+  const sections = [
+    { id:'optimization', title:'Price Change Limits', cols:SECTION_COLUMNS.optimization },
+    { id:'corridor',     title:'Guidance Corridor', cols:SECTION_COLUMNS.corridor },
+    { id:'benchmarks',   title:'Benchmark Weighting', cols:SECTION_COLUMNS.benchmarks },
+    { id:'alerts',       title:'Market & Capacity Alerts', cols:SECTION_COLUMNS.alerts },
+  ];
+
+  // Render each parameter as text, applying small variation
+  function snapshot(p, key) {
+    const cur = p[key];
+    if (typeof cur === 'number') {
+      const histVal = parseFloat((cur + variation * 0.5).toFixed(1));
+      const changed = histVal !== cur;
+      return { val: histVal, cur, changed };
+    }
+    return { val: cur, cur, changed: false };
+  }
+
+  // Map column label → param key
+  const COL_KEY = {
+    'Max Price Increase':'maxPriceChange', 'Max Price Decrease':'minPriceChange', 'Review Cadence (days)':'reviewCadenceDays',
+    'Corridor Width (±%)':'corridorWidthPct', 'Margin Floor over Var. Cost':'costFloorMarginPct',
+    'Feedinfo Weight':'feedinfoWeightPct',
+    'Market Move Alert (±%)':'marketMoveAlertPct', 'Capacity Alert (>%)':'capUtilAlertPct',
+  };
+
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
+  sections.forEach(s => {
+    let rows = '';
+    data.forEach(comm => {
+      const cells = s.cols.map(col => {
+        // Section-specific param key for ambiguous labels
+        let key = COL_KEY[col.label];
+        if (!key) return '<td style="padding:6px 8px;text-align:center;font-size:12px;color:var(--text-muted);">—</td>';
+        const snap = snapshot(comm.params, key);
+        const bg = snap.changed ? 'background:rgba(245,166,35,0.08);' : '';
+        const badge = snap.changed ? ' <span style="font-size:9px;color:#92400e;background:rgba(245,166,35,0.2);border-radius:3px;padding:1px 4px;margin-left:4px;">Changed</span>' : '';
+        return `<td style="padding:6px 8px;text-align:center;font-size:12px;color:var(--text-primary);${bg}">${snap.val}${badge}</td>`;
+      }).join('');
+      rows += `<tr><td style="padding:7px 12px;font-weight:500;font-size:12.5px;white-space:nowrap;">${comm.name}</td>${cells}</tr>`;
+    });
+    const ths = s.cols.map(c => `<th style="text-align:center;font-size:10.5px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;padding:8px;">${c.label}</th>`).join('');
+    html += `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <div style="padding:12px 16px;background:var(--body-bg);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-primary);text-transform:uppercase;letter-spacing:.05em;">${s.title}</div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%;">
+            <thead><tr><th style="text-align:left;font-size:10.5px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;">Market</th>${ths}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  const el = document.getElementById('historyContent');
+  if (el) el.innerHTML = html;
+}
+
+// ── Save ─────────────────────────────────────────────────
+function saveParams() {
+  Object.entries(paramChanges).forEach(([key, val]) => {
+    const parts = key.split('-');
+    const commId = parts[0] + '-' + parts[1];
+    const level = parts[2];
+    const paramKey = parts.slice(3).join('-');
+    const comm = PARAMETERS_DATA.find(c => c.id === commId);
+    if (!comm) return;
+    const target = level === 'property'
+      ? comm.params
+      : (comm.bedTypes.find(b => b.type === level)?.params);
+    if (!target) return;
+    // Dotted paramKey (e.g. "concessionRounding.dollarMethod") routes into a
+    // nested object; numeric amount fields are parsed to float so the UI can
+    // read them back with `===` comparisons.
+    if (paramKey.includes('.')) {
+      const [obj, sub] = paramKey.split('.');
+      if (!target[obj] || typeof target[obj] !== 'object') target[obj] = {};
+      const isAmountField = sub === 'dollarAmount' || sub === 'percentAmount';
+      target[obj][sub] = isAmountField ? parseFloat(val) : val;
+    } else {
+      target[paramKey] = val;
+    }
+  });
+  Object.keys(paramChanges).forEach(k => delete paramChanges[k]);
+  renderParamPanel();
+  showToast('Parameters saved successfully');
+}
+
+// ── Init ─────────────────────────────────────────────────
+populateFilters();
+renderParamNav();
+renderParamPanel();
+</script>
+</body>
+</html>
